@@ -1,120 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  EMERGENCY, INTERACT_RANGE, KILL_RANGE, MAP, REACTOR_FIXES, STATIONS, VENTS, WALLS, distance,
+  EMERGENCY, INTERACT_RANGE, KILL_RANGE, REACTOR_FIXES, ROOMS, STATIONS, VENTS, distance,
   type ClientMessage, type ServerMessage, type Snapshot
 } from '../../../packages/protocol/src/index';
 import './style.css';
+import './experience.css';
+import { GameScene } from './GameScene';
 
 const apiBase = (import.meta.env.VITE_REALTIME_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '');
 const wsBase = apiBase.replace(/^http/, 'ws');
 
 function send(ws: WebSocket | null, message: ClientMessage) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
-}
-
-function GameCanvas({ game, onInteract }: { game: Snapshot; onInteract: () => void }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const gameRef = useRef(game);
-  gameRef.current = game;
-  useEffect(() => {
-    const canvas = ref.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    const fogCanvas = document.createElement('canvas');
-    fogCanvas.width = MAP.width; fogCanvas.height = MAP.height;
-    const fog = fogCanvas.getContext('2d')!;
-    let frame = 0;
-    const draw = () => {
-      const g = gameRef.current;
-      ctx.clearRect(0, 0, MAP.width, MAP.height);
-      ctx.fillStyle = '#101a2c'; ctx.fillRect(0, 0, MAP.width, MAP.height);
-      ctx.strokeStyle = '#1b2a40'; ctx.lineWidth = 1;
-      for (let x = 0; x < MAP.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, MAP.height); ctx.stroke(); }
-      for (let y = 0; y < MAP.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(MAP.width, y); ctx.stroke(); }
-      const rooms = [
-        { x: 25, y: 25, w: 200, h: 210, name: 'ĐIỆN' }, { x: 25, y: 485, w: 200, h: 210, name: 'NHIÊN LIỆU' },
-        { x: 425, y: 25, w: 250, h: 95, name: 'Y TẾ' }, { x: 425, y: 600, w: 250, h: 95, name: 'ĐỘNG CƠ' },
-        { x: 875, y: 25, w: 200, h: 210, name: 'DỮ LIỆU' }, { x: 875, y: 485, w: 200, h: 210, name: 'ĐIỀU KHIỂN' },
-        { x: 280, y: 280, w: 540, h: 160, name: 'SẢNH TRUNG TÂM' }
-      ];
-      for (const room of rooms) {
-        ctx.fillStyle = '#16253b'; ctx.fillRect(room.x, room.y, room.w, room.h);
-        ctx.strokeStyle = '#35516c'; ctx.strokeRect(room.x, room.y, room.w, room.h);
-        ctx.fillStyle = '#68829d'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
-        ctx.fillText(room.name, room.x + 12, room.y + 21);
-      }
-      for (const wall of WALLS) {
-        ctx.fillStyle = '#41627e'; ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
-        ctx.fillStyle = '#76a1bd'; ctx.fillRect(wall.x, wall.y, wall.w, 4);
-      }
-      if (g.sabotage === 'doors' && Date.now() < g.doorsUntil) {
-        ctx.fillStyle = '#e96b6b';
-        ctx.fillRect(232, 255, 16, 210); ctx.fillRect(852, 255, 16, 210);
-      }
-      for (const station of STATIONS) {
-        const active = g.tasks.includes(station.id) && !g.completedTasks.includes(station.id);
-        ctx.beginPath(); ctx.arc(station.x, station.y, 24, 0, Math.PI * 2);
-        ctx.fillStyle = active ? '#254d65' : '#2a3b4e'; ctx.fill();
-        ctx.lineWidth = 3; ctx.strokeStyle = active ? '#65e4dd' : '#657e94'; ctx.stroke();
-        ctx.fillStyle = '#d5f7f5'; ctx.font = '21px system-ui'; ctx.textAlign = 'center';
-        ctx.fillText(station.icon, station.x, station.y + 7);
-        ctx.font = '12px system-ui'; ctx.fillStyle = '#b4cedc';
-        ctx.fillText(station.name, station.x, station.y + 43);
-      }
-      for (const vent of VENTS) {
-        ctx.fillStyle = '#34485b'; ctx.fillRect(vent.x - 22, vent.y - 14, 44, 28);
-        ctx.strokeStyle = '#9ab4c7'; ctx.strokeRect(vent.x - 22, vent.y - 14, 44, 28);
-        for (let i = -10; i <= 10; i += 10) { ctx.beginPath(); ctx.moveTo(vent.x - 15, vent.y + i / 2); ctx.lineTo(vent.x + 15, vent.y + i / 2); ctx.stroke(); }
-      }
-      ctx.beginPath(); ctx.arc(EMERGENCY.x, EMERGENCY.y, 37, 0, 2 * Math.PI);
-      ctx.fillStyle = '#536c87'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#89b0cd'; ctx.stroke();
-      ctx.beginPath(); ctx.arc(EMERGENCY.x, EMERGENCY.y, 17, 0, 2 * Math.PI);
-      ctx.fillStyle = '#e2636b'; ctx.fill();
-      ctx.fillStyle = '#dfecf3'; ctx.font = 'bold 12px system-ui'; ctx.fillText('HỌP', EMERGENCY.x, EMERGENCY.y + 60);
-      if (g.sabotage === 'reactor') for (const point of REACTOR_FIXES) {
-        ctx.beginPath(); ctx.arc(point.x, point.y, 28, 0, Math.PI * 2); ctx.fillStyle = '#ad363e'; ctx.fill();
-        ctx.strokeStyle = '#ff9b95'; ctx.stroke(); ctx.fillStyle = 'white'; ctx.font = 'bold 19px system-ui'; ctx.fillText('!', point.x, point.y + 7);
-      }
-      for (const body of g.bodies) {
-        ctx.fillStyle = body.color; ctx.fillRect(body.x - 18, body.y - 9, 36, 19);
-        ctx.fillStyle = '#d9ebef'; ctx.fillRect(body.x - 3, body.y - 14, 17, 8);
-        ctx.fillStyle = '#e7606c'; ctx.font = 'bold 14px system-ui'; ctx.fillText('✕', body.x, body.y - 20);
-      }
-      for (const player of g.players) {
-        if (!player.alive && g.phase !== 'ended' && player.id !== g.me) continue;
-        ctx.globalAlpha = player.alive ? 1 : .5;
-        ctx.beginPath(); ctx.ellipse(player.x, player.y + 19, 22, 7, 0, 0, 2 * Math.PI);
-        ctx.fillStyle = '#08101c'; ctx.fill();
-        ctx.fillStyle = player.color; ctx.fillRect(player.x - 17, player.y + 2, 9, 22);
-        ctx.fillRect(player.x + 8, player.y + 2, 9, 22);
-        ctx.beginPath(); ctx.roundRect(player.x - 19, player.y - 23, 38, 42, 16);
-        ctx.fillStyle = player.color; ctx.fill();
-        ctx.strokeStyle = player.id === g.me ? '#ffffff' : '#162235'; ctx.lineWidth = player.id === g.me ? 3 : 2; ctx.stroke();
-        ctx.beginPath(); ctx.roundRect(player.x - 11, player.y - 15, 30, 17, 8);
-        ctx.fillStyle = '#bceefa'; ctx.fill(); ctx.strokeStyle = '#3f647c'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = '#f5fbff'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
-        ctx.fillText(player.name + (g.allies.includes(player.id) ? ' ◆' : ''), player.x, player.y - 32);
-        ctx.globalAlpha = 1;
-      }
-      const me = g.players.find(p => p.id === g.me);
-      if (g.phase === 'playing' && me?.alive && g.role === 'crew') {
-        const radius = g.sabotage === 'lights' ? 140 : 320;
-        fog.clearRect(0, 0, MAP.width, MAP.height);
-        fog.fillStyle = 'rgba(2,7,17,.88)'; fog.fillRect(0, 0, MAP.width, MAP.height);
-        fog.globalCompositeOperation = 'destination-out';
-        const gradient = fog.createRadialGradient(me.x, me.y, 35, me.x, me.y, radius);
-        gradient.addColorStop(0, 'rgba(0,0,0,1)'); gradient.addColorStop(.7, 'rgba(0,0,0,.95)'); gradient.addColorStop(1, 'rgba(0,0,0,0)');
-        fog.fillStyle = gradient; fog.beginPath(); fog.arc(me.x, me.y, radius, 0, Math.PI * 2); fog.fill();
-        fog.globalCompositeOperation = 'source-over';
-        ctx.drawImage(fogCanvas, 0, 0);
-      }
-      frame = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  return <canvas ref={ref} width={MAP.width} height={MAP.height} onClick={onInteract} aria-label="Bản đồ tàu" />;
 }
 
 function TaskModal({ id, fake, onClose, onComplete }: { id: string; fake: boolean; onClose: () => void; onComplete: () => void }) {
@@ -138,8 +36,8 @@ function TaskModal({ id, fake, onClose, onComplete }: { id: string; fake: boolea
   useEffect(() => { if (progress >= 100 && (id === 'scan' || id === 'upload')) finish(); }, [progress]);
   useEffect(() => () => { if (completion.current) clearTimeout(completion.current); }, []);
   const symbols = ['◆', '●', '▲'];
-  return <div className="overlay"><section className="modal task-modal"><button className="close" onClick={onClose}>×</button><div className="eyebrow">{fake ? 'GIẢ LÀM NHIỆM VỤ' : 'NHIỆM VỤ'}</div><h2>{station.name}</h2>
-    {id === 'wires' && <><p>Nối các dây cùng màu.</p><div className="wire-grid">{[0, 1, 2].map(n => <button key={`left-${n}`} className={n < step ? 'done' : firstWire === n ? 'selected' : ''} style={{ borderColor: ['#ef7989', '#75e2dc', '#e9c76c'][n] }} onClick={() => setFirstWire(n)}>{['Đỏ', 'Xanh', 'Vàng'][n]}</button>)}{[2, 0, 1].map(n => <button key={`right-${n}`} className={n < step ? 'done' : ''} style={{ borderColor: ['#ef7989', '#75e2dc', '#e9c76c'][n] }} onClick={() => { if (firstWire !== n || n !== step) { setFirstWire(null); return; } setFirstWire(null); if (step === 2) finish(); else setStep(step + 1); }}>{['Vàng', 'Đỏ', 'Xanh'][[2, 0, 1].indexOf(n)]}</button>)}</div></>}
+  return <div className="overlay"><section className="modal task-modal"><button className="close" onClick={onClose} aria-label="Đóng nhiệm vụ">×</button><div className="eyebrow">{fake ? 'GIẢ LÀM NHIỆM VỤ' : station.room}</div><h2>{station.name}</h2>
+    {id === 'wires' && <><p>Chọn dây bên trái, sau đó chọn đúng màu bên phải. Làm lần lượt từ trên xuống.</p><div className="wire-grid">{[0, 1, 2].map(n => <button key={`left-${n}`} disabled={n < step || completed.current} className={n < step ? 'done' : firstWire === n ? 'selected' : ''} style={{ borderColor: ['#ef7989', '#75e2dc', '#e9c76c'][n] }} onClick={() => setFirstWire(n)}>{['Đỏ', 'Xanh', 'Vàng'][n]}</button>)}{[2, 0, 1].map(n => <button key={`right-${n}`} disabled={n < step || completed.current} className={n < step ? 'done' : firstWire === n ? 'selected' : ''} style={{ borderColor: ['#ef7989', '#75e2dc', '#e9c76c'][n] }} onClick={() => { if (firstWire !== n || n !== step) { setFirstWire(null); return; } setFirstWire(null); if (step === 2) finish(); else setStep(step + 1); }}>{['Đỏ', 'Xanh', 'Vàng'][n]}</button>)}</div><div className="task-instruction">{step}/3 mạch đã nối</div></>}
     {id === 'fuel' && <><p>Nhấn để nạp đầy bình nhiên liệu.</p><div className="task-gauge"><i style={{ width: `${step * 12.5}%` }} /></div><button className="task-control" disabled={completed.current} onClick={() => { if (step >= 7) finish(); setStep(Math.min(8, step + 1)); }}>NẠP NHIÊN LIỆU</button><div>{Math.round(step * 12.5)}%</div></>}
     {(id === 'scan' || id === 'upload') && <><p>{id === 'scan' ? 'Đang quét mẫu sinh học…' : 'Đang tải dữ liệu về tàu…'}</p><div className="task-gauge"><i style={{ width: `${progress}%` }} /></div><strong>{progress}%</strong></>}
     {id === 'calibrate' && <><p>Nhấn các ký hiệu theo thứ tự.</p><div className="sequence">{symbols.map((symbol, i) => <span key={i} className={i < step ? 'done' : i === step ? 'current' : ''}>{symbol}</span>)}</div><div className="symbol-buttons">{[...symbols].reverse().map(symbol => <button key={symbol} onClick={() => { if (symbol !== symbols[step]) { setStep(0); return; } if (step === 2) finish(); else setStep(step + 1); }}>{symbol}</button>)}</div></>}
@@ -163,7 +61,9 @@ function App() {
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keys = useRef(new Set<string>());
   const snapshotRef = useRef<Snapshot | null>(null);
+  const taskRef = useRef<string | null>(null);
   snapshotRef.current = snapshot;
+  taskRef.current = task;
 
   useEffect(() => {
     const timer = setInterval(() => setClock(value => value + 1), 1000);
@@ -188,7 +88,7 @@ function App() {
       try { message = JSON.parse(event.data); } catch { return; }
       if (message.type === 'welcome') sessionStorage.setItem(`starship-token-${normalized}`, message.token);
       else if (message.type === 'snapshot') { setSnapshot(message); setError(''); }
-      else if (message.type === 'error') setError(message.message);
+      else if (message.type === 'error') { setError(message.message); if (taskRef.current) setTask(null); }
     };
     ws.onerror = () => setStatus('Mất kết nối');
     ws.onclose = event => {
@@ -216,7 +116,7 @@ function App() {
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);
     const timer = setInterval(() => {
       const g = snapshotRef.current;
-      if (g?.phase !== 'playing') return;
+      if (g?.phase !== 'playing' || taskRef.current) return;
       const k = keys.current;
       const dx = Number(k.has('d') || k.has('arrowright')) - Number(k.has('a') || k.has('arrowleft'));
       const dy = Number(k.has('s') || k.has('arrowdown')) - Number(k.has('w') || k.has('arrowup'));
@@ -224,6 +124,13 @@ function App() {
     }, 125);
     return () => { clearInterval(timer); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
   }, []);
+
+  useEffect(() => {
+    if (task) keys.current.clear();
+  }, [task]);
+  useEffect(() => {
+    if (task && snapshot?.completedTasks.includes(task)) setTask(null);
+  }, [snapshot?.completedTasks, task]);
 
   const createRoom = async () => {
     if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
@@ -247,10 +154,12 @@ function App() {
   const nearVent = snapshot && me ? VENTS.findIndex(v => distance(v, me) <= INTERACT_RANGE) : -1;
   const nearReactor = snapshot && me ? REACTOR_FIXES.findIndex(v => distance(v, me) <= INTERACT_RANGE) : -1;
   const nearEmergency = snapshot && me && distance(me, EMERGENCY) <= INTERACT_RANGE;
+  const currentRoom = me && ROOMS.find(room => me.x >= room.x && me.x <= room.x + room.w && me.y >= room.y && me.y <= room.y + room.h)?.name || 'HÀNH LANG';
   const seconds = (target: number) => Math.max(0, Math.ceil((target - Date.now()) / 1000));
   const invite = `${location.origin}/?room=${code}`;
   const openTask = (id: string) => {
     if (!snapshot || snapshot.completedTasks.includes(id)) return;
+    keys.current.clear();
     setTask(id);
     if (snapshot.role === 'crew') send(socket.current, { type: 'taskStart', id });
   };
@@ -266,6 +175,8 @@ function App() {
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement)?.tagName)) return;
+      if (event.key === 'Escape' && task) { setTask(null); return; }
+      if (task || snapshot?.phase !== 'playing' || event.repeat) return;
       if (event.key.toLowerCase() === 'e') interact();
       if (event.key.toLowerCase() === 'q' && nearTarget) send(socket.current, { type: 'kill', target: nearTarget.id });
       if (event.key.toLowerCase() === 'v' && nearVent >= 0) send(socket.current, { type: 'vent', index: nearVent });
@@ -277,15 +188,15 @@ function App() {
   if (!snapshot) return <main className="landing">
     <div className="stars" />
     <section className="landing-card">
-      <div className="eyebrow">SOCIAL DEDUCTION • ONLINE</div>
+      <div className="landing-symbol">✦</div><div className="eyebrow">NHIỆM VỤ Ở NGOÀI KHÔNG GIAN · ONLINE</div>
       <h1>STARSHIP<br /><span>SUSPECTS</span></h1>
-      <p>Một con tàu. Hai phe. Không phải ai cũng nói thật.</p>
+      <p>Lập đội, hoàn thành nhiệm vụ và tìm ra kẻ giả mạo trước khi con tàu bị chiếm.</p>
       <label>TÊN CỦA BẠN<input value={name} maxLength={16} placeholder="Nhập tên phi hành gia" onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createRoom()} /></label>
       <button className="primary large" onClick={createRoom}>Tạo phòng mới <span>→</span></button>
       <div className="divider">HOẶC THAM GIA</div>
       <div className="join"><input value={codeInput} maxLength={6} placeholder="MÃ PHÒNG" onChange={e => setCodeInput(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && connect(codeInput, name)} /><button onClick={() => connect(codeInput, name)}>Vào phòng</button></div>
       {status && <div className="status">{status}</div>}{error && <div className="error">{error}</div>}
-      <p className="small">Chơi bằng máy tính · WASD di chuyển · E tương tác · Q hạ gục · V thông hơi</p>
+      <p className="small">TỐI ƯU CHO MÁY TÍNH · 4–10 NGƯỜI · MỜI BẰNG LINK</p>
     </section>
   </main>;
 
@@ -298,13 +209,14 @@ function App() {
       <div className="lobby-main"><div className="eyebrow">SẢNH CHỜ · {snapshot.players.length}/10 NGƯỜI</div><h2>Chuẩn bị lên tàu</h2><p>Gửi link hoặc mã phòng để mời bạn bè. Cần ít nhất 4 người để bắt đầu.</p>
         <div className="invite"><span>{invite}</span><button onClick={share}>{copied ? 'Đã sao chép' : 'Sao chép link'}</button></div>
         <div className="code-display">{code.split('').map((c, i) => <span key={i}>{c}</span>)}</div>
+        <div className="lobby-guide"><span><b>01</b> Khám phá con tàu</span><span><b>02</b> Hoàn thành nhiệm vụ</span><span><b>03</b> Họp và bỏ phiếu</span></div>
         {snapshot.host === snapshot.me ? <button className="primary large" disabled={snapshot.players.length < 4} onClick={() => send(socket.current, { type: 'start' })}>Bắt đầu trận <span>→</span></button> : <div className="waiting">Đang chờ host bắt đầu…</div>}
       </div><div className="lobby-list"><h3>PHI HÀNH ĐOÀN</h3>{snapshot.players.map(p => <div className="player-row" key={p.id}><span className="player-dot" style={{ background: p.color }} /><strong>{p.name}</strong>{p.id === snapshot.host && <small>HOST</small>}{!p.connected && <small>MẤT KẾT NỐI</small>}</div>)}</div>
     </main> : <main className="game-layout">
       <section className="map-panel">
-        <div className="map-header"><div><span className="eyebrow">{snapshot.phase === 'ended' ? 'KẾT THÚC' : snapshot.phase === 'meeting' ? 'HỌP KHẨN CẤP' : 'ĐANG CHƠI'}</span><h2>{snapshot.role === 'impostor' ? 'Kẻ phá hoại' : 'Phi hành đoàn'}</h2></div><div className="progress"><span>NHIỆM VỤ {Math.round(snapshot.taskProgress * 100)}%</span><div><i style={{ width: `${snapshot.taskProgress * 100}%` }} /></div></div></div>
-        <div className="canvas-wrap"><GameCanvas game={snapshot} onInteract={interact} /></div>
-        <div className="map-footer"><span>W A S D / ↑ ↓ ← → di chuyển</span><span>E tương tác</span><span>{snapshot.role === 'impostor' ? 'Q hạ gục · V thông hơi' : 'Hoàn thành nhiệm vụ để thắng'}</span></div>
+        <div className="map-header"><div><span className="eyebrow">{snapshot.phase === 'ended' ? 'KẾT THÚC' : snapshot.phase === 'meeting' ? 'HỌP KHẨN CẤP' : 'ĐANG CHƠI'} · {currentRoom}</span><h2>{snapshot.role === 'impostor' ? 'Kẻ phá hoại' : 'Phi hành đoàn'}</h2></div><div className="progress"><span>NHIỆM VỤ {Math.round(snapshot.taskProgress * 100)}%</span><div><i style={{ width: `${snapshot.taskProgress * 100}%` }} /></div></div></div>
+        <div className="canvas-wrap"><GameScene game={snapshot} onInteract={interact} pressed={keys} /></div>
+        <div className="map-footer"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> DI CHUYỂN</span><span><kbd>E</kbd> TƯƠNG TÁC</span><span>{snapshot.role === 'impostor' ? <><kbd>Q</kbd> HẠ GỤC · <kbd>V</kbd> THÔNG HƠI</> : 'KHÁM PHÁ CÁC PHÒNG ĐỂ LÀM NHIỆM VỤ'}</span></div>
       </section>
       <aside className="sidebar"><div className={`role-card ${snapshot.role === 'impostor' ? 'impostor' : ''}`}><div className="eyebrow">VAI TRÒ BÍ MẬT</div><h3>{snapshot.role === 'impostor' ? 'KẺ PHÁ HOẠI' : 'PHI HÀNH ĐOÀN'}</h3><p>{snapshot.role === 'impostor' ? 'Hạ gục, phá hoại và đánh lạc hướng đoàn.' : 'Làm nhiệm vụ và tìm ra kẻ phá hoại.'}</p>{!me?.alive && <div className="dead-badge">BẠN ĐÃ CHẾT · {snapshot.role === 'crew' ? 'TIẾP TỤC LÀM NHIỆM VỤ' : 'THEO DÕI TRẬN'}</div>}</div>
         {snapshot.sabotage && <div className="alert">{snapshot.sabotage === 'reactor' ? `⚠ LÒ PHẢN ỨNG: ${seconds(snapshot.reactorDeadline)}s` : snapshot.sabotage === 'lights' ? '⚠ MẤT ĐIỆN · SỬA TẠI PHÒNG ĐIỆN' : '⚠ CỬA ĐANG KHÓA'}</div>}
@@ -319,10 +231,10 @@ function App() {
           {snapshot.phase === 'playing' && !nearBody && !nearStation && !nearTarget && <div className="muted">{me?.alive ? 'Đến gần trạm hoặc người chơi để tương tác.' : 'Ma phe thiện vẫn có thể làm nhiệm vụ.'}</div>}
         </div></div>
         {snapshot.role === 'impostor' && snapshot.phase === 'playing' && me?.alive && <div className="panel"><h3>PHÁ HOẠI</h3><div className="sabotage-actions">{(['lights', 'doors', 'reactor'] as const).map(kind => <button key={kind} disabled={!!snapshot.sabotage || seconds(snapshot.sabotageReadyAt) > 0} onClick={() => send(socket.current, { type: 'sabotage', kind })}>{kind === 'lights' ? 'Tắt đèn' : kind === 'doors' ? 'Khóa cửa' : 'Lò phản ứng'}</button>)}</div><small>Hồi chiêu: {seconds(snapshot.sabotageReadyAt)}s</small></div>}
-        <div className="panel"><h3>{snapshot.role === 'crew' ? 'NHIỆM VỤ' : 'NGƯỜI CHƠI'}</h3>{snapshot.role === 'crew' ? STATIONS.map(s => <div className="task-row" key={s.id}><span>{snapshot.completedTasks.includes(s.id) ? '✓' : '○'}</span>{s.name}</div>) : snapshot.players.map(p => <div className="task-row" key={p.id}><span style={{ color: p.color }}>●</span>{p.name}{snapshot.allies.includes(p.id) && ' ◆'}</div>)}</div>
+        <div className="panel"><h3>{snapshot.role === 'crew' ? `NHIỆM VỤ · ${snapshot.completedTasks.length}/${snapshot.tasks.length}` : 'NGƯỜI CHƠI'}</h3>{snapshot.role === 'crew' ? STATIONS.map(s => <div className={`task-row ${snapshot.completedTasks.includes(s.id) ? 'is-done' : ''}`} key={s.id}><span>{snapshot.completedTasks.includes(s.id) ? '✓' : '○'}</span><div>{s.name}<small>{s.room}</small></div></div>) : snapshot.players.map(p => <div className="task-row" key={p.id}><span style={{ color: p.color }}>●</span>{p.name}{snapshot.allies.includes(p.id) && ' ◆'}</div>)}</div>
       </aside>
     </main>}
-    {task && snapshot.phase === 'playing' && <TaskModal key={task} id={task} fake={snapshot.role === 'impostor'} onClose={() => setTask(null)} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task }); setTask(null); }} />}
+    {task && snapshot.phase === 'playing' && <TaskModal key={task} id={task} fake={snapshot.role === 'impostor'} onClose={() => setTask(null)} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task }); else setTask(null); }} />}
       {meeting && snapshot.phase === 'meeting' && <div className="overlay"><section className="modal meeting-modal"><div className="eyebrow">{meeting.reason.toUpperCase()} · {meeting.stage === 'discussion' ? 'THẢO LUẬN' : meeting.stage === 'voting' ? 'BỎ PHIẾU' : 'KẾT QUẢ'}</div><h2>{meeting.stage === 'result' ? meeting.ejected ? `${snapshot.players.find(p => p.id === meeting.ejected)?.name || 'Một người'} đã bị loại` : 'Không ai bị loại' : 'Ai là kẻ phá hoại?'}</h2><div className="timer">{seconds(meeting.endsAt)}s</div><div className="meeting-grid"><div className="vote-list">{snapshot.players.map(p => <button key={p.id} disabled={!p.alive || meeting.stage !== 'voting' || !me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: p.id })}><span className="player-dot" style={{ background: p.color }} />{p.name}{!p.alive && ' · đã chết'}{meeting.votesCast.includes(p.id) && <small>ĐÃ BỎ PHIẾU</small>}</button>)}{meeting.stage === 'voting' && <button disabled={!me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: null })}>Bỏ qua phiếu</button>}</div><div className="chat"><div className="messages">{snapshot.chat.map(m => <div key={m.id}><strong>{m.name}: </strong>{m.text}</div>)}</div><form onSubmit={e => { e.preventDefault(); send(socket.current, { type: 'chat', text: chatText }); setChatText(''); }}><input value={chatText} maxLength={180} placeholder={me?.alive ? 'Nhắn trong cuộc họp…' : 'Chỉ ma khác thấy tin nhắn…'} onChange={e => setChatText(e.target.value)} /><button disabled={!chatText.trim()}>Gửi</button></form></div></div></section></div>}
     {snapshot.phase === 'ended' && <div className="overlay"><section className="modal end-modal"><div className="eyebrow">VÁN ĐẤU KẾT THÚC</div><h2 className={snapshot.winner === 'impostor' ? 'red' : 'cyan'}>{snapshot.winner === 'impostor' ? 'KẺ PHÁ HOẠI THẮNG' : 'PHI HÀNH ĐOÀN THẮNG'}</h2><p>{snapshot.winnerReason}</p><div className="winner-list">{snapshot.players.map(p => <span key={p.id} style={{ color: p.color }}>{p.name}{snapshot.allies.includes(p.id) ? ' ◆' : ''}</span>)}</div>{snapshot.host === snapshot.me ? <button className="primary large" onClick={() => send(socket.current, { type: 'restart' })}>Chơi ván mới →</button> : <p>Đang chờ host mở ván mới…</p>}</section></div>}
     {error && <div className="toast" onClick={() => setError('')}>{error} ×</div>}

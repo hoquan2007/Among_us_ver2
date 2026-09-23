@@ -5,6 +5,8 @@ const origin = process.env.SMOKE_ORIGIN || 'http://localhost:5173';
 const base = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const ejectMode = process.argv.includes('--eject');
 const quickMode = process.argv.includes('--quick');
+const taskMode = process.argv.includes('--task');
+const killMode = process.argv.includes('--kill');
 const response = await fetch(`${base}/rooms`, { method: 'POST', headers: { Origin: origin } });
 assert.equal(response.status, 201);
 const { code } = await response.json();
@@ -42,6 +44,41 @@ for (const client of clients) {
   assert.ok(!latest(client).players.some(player => 'role' in player), 'Roles must stay hidden from public player list');
 }
 assert.equal(clients.filter(c => latest(c).role === 'impostor').length, 1);
+if (killMode) {
+  const killer = clients.find(client => latest(client).role === 'impostor');
+  const origin = latest(killer).players.find(p => p.id === latest(killer).me);
+  const victim = latest(killer).players.filter(p => p.id !== origin.id).sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y) - Math.hypot(b.x - origin.x, b.y - origin.y))[0];
+  await new Promise(resolve => setTimeout(resolve, 20_200));
+  killer.socket.send(JSON.stringify({ type: 'kill', target: victim.id }));
+  await waitFor(() => latest(killer).kills?.some(effect => effect.target === victim.id));
+  assert.ok(latest(killer).bodies.some(body => body.playerId === victim.id));
+  for (const client of clients) client.socket.close();
+  console.log(`PASS: room ${code}, kill animation event and reportable body`);
+  process.exit(0);
+}
+if (taskMode) {
+  const crew = clients.find((client, index) => index > 0 && latest(client).role === 'crew');
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const walk = async (axis, goal) => {
+    for (let i = 0; i < 25; i++) {
+      const me = latest(crew).players.find(p => p.id === latest(crew).me);
+      if (Math.abs(me[axis] - goal) < 18) return;
+      const sign = Math.sign(goal - me[axis]);
+      crew.socket.send(JSON.stringify({ type: 'move', dx: axis === 'x' ? sign : 0, dy: axis === 'y' ? sign : 0 }));
+      await delay(145);
+    }
+    throw new Error(`Could not reach ${axis}=${goal}`);
+  };
+  await delay(150);
+  await walk('x', 800);
+  await walk('y', 220);
+  crew.socket.send(JSON.stringify({ type: 'taskStart', id: 'scan' }));
+  await delay(2050);
+  crew.socket.send(JSON.stringify({ type: 'taskComplete', id: 'scan' }));
+  await waitFor(() => latest(crew).completedTasks.includes('scan'));
+  assert.ok(latest(crew).taskProgress > 0);
+  console.log('PASS: crew reached medical room and completed scan');
+}
 const host = clients[0];
 host.socket.send(JSON.stringify({ type: 'emergency' }));
 await waitFor(() => latest(host)?.phase === 'meeting');

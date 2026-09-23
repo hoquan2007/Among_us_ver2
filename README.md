@@ -28,6 +28,8 @@ Truy cập `http://localhost:5173`. Mặc định frontend kết nối Worker �
 
 Điều khiển: **WASD** hoặc phím mũi tên để di chuyển, **E** tương tác, **Q** hạ gục, **V** đi thông hơi. Các hành động cũng có nút trong bảng bên phải.
 
+Tàu hiện có 7 khu vực và camera theo người chơi. Trước khi deploy, chạy `node scripts/check-map.mjs` để kiểm tra đường đi tới các trạm. Khi Worker đang chạy, dùng `node scripts/smoke.mjs --task --quick` để thử hoàn thành nhiệm vụ và `node scripts/smoke.mjs --kill` để thử hạ gục. Các bước nâng cấp và tiêu chí nghiệm thu nằm trong `UPGRADE_PLAN.md`.
+
 ## Deploy miễn phí
 
 Hệ thống gồm hai phần: website tĩnh trên Vercel Hobby và Worker/Durable Object trên Cloudflare Workers Free. Không cần mua domain.
