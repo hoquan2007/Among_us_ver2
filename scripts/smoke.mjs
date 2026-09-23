@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 
-const origin = 'http://localhost:5173';
-const base = 'http://127.0.0.1:8787';
+const origin = process.env.SMOKE_ORIGIN || 'http://localhost:5173';
+const base = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const ejectMode = process.argv.includes('--eject');
+const quickMode = process.argv.includes('--quick');
 const response = await fetch(`${base}/rooms`, { method: 'POST', headers: { Origin: origin } });
 assert.equal(response.status, 201);
 const { code } = await response.json();
@@ -32,10 +33,9 @@ const waitFor = async predicate => {
   }
   throw new Error('Timed out waiting for game state');
 };
-await new Promise(resolve => setTimeout(resolve, 200));
-assert.equal(latest(clients[0]).players.length, 4);
+await waitFor(() => clients.every(client => latest(client)?.players.length === 4));
 clients[0].socket.send(JSON.stringify({ type: 'start' }));
-await new Promise(resolve => setTimeout(resolve, 300));
+await waitFor(() => clients.every(client => latest(client)?.phase === 'playing'));
 for (const client of clients) {
   assert.equal(latest(client).phase, 'playing');
   assert.ok(['crew', 'impostor'].includes(latest(client).role));
@@ -44,9 +44,14 @@ for (const client of clients) {
 assert.equal(clients.filter(c => latest(c).role === 'impostor').length, 1);
 const host = clients[0];
 host.socket.send(JSON.stringify({ type: 'emergency' }));
-await new Promise(resolve => setTimeout(resolve, 300));
+await waitFor(() => latest(host)?.phase === 'meeting');
 assert.equal(latest(host).phase, 'meeting');
 assert.equal(latest(host).meeting.stage, 'discussion');
+if (quickMode) {
+  for (const client of clients) client.socket.close();
+  console.log(`PASS: room ${code}, four players, roles hidden, meeting opened`);
+  process.exit(0);
+}
 await waitFor(() => latest(host).meeting?.stage === 'voting');
 const target = clients.find(client => latest(client).role === 'impostor');
 for (const client of clients) client.socket.send(JSON.stringify({ type: 'vote', target: ejectMode ? latest(target).me : null }));

@@ -35,7 +35,7 @@ Hệ thống gồm hai phần: website tĩnh trên Vercel Hobby và Worker/Durab
 ### 1. Cloudflare realtime
 
 1. Tạo tài khoản Cloudflare và đăng nhập Wrangler: `npx wrangler login`.
-2. Trong `apps/realtime/wrangler.jsonc`, đổi `WEB_ORIGIN` thành URL Vercel production chính xác, ví dụ `https://ten-game.vercel.app` (không có `/` cuối). Có thể cập nhật lại sau khi biết URL production.
+2. `WEB_ORIGIN` trong `apps/realtime/wrangler.jsonc` đang đặt là `https://amongusver2.vercel.app`. Nếu đổi domain production, cập nhật giá trị này cho khớp chính xác (không có `/` cuối) rồi deploy Worker lại.
 3. Chạy `npm run deploy:server`. Ghi lại URL `https://starship-suspects-realtime.<subdomain>.workers.dev` mà Wrangler trả về.
 4. Worker dùng migration `new_sqlite_classes`, nên Durable Objects hoạt động trên gói Free. Không thêm database ngoài.
 

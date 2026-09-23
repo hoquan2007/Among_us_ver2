@@ -6,7 +6,7 @@ import {
 } from '../../../packages/protocol/src/index';
 import './style.css';
 
-const apiBase = (import.meta.env.VITE_REALTIME_URL || 'http://localhost:8787').replace(/\/$/, '');
+const apiBase = (import.meta.env.VITE_REALTIME_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '');
 const wsBase = apiBase.replace(/^http/, 'ws');
 
 function send(ws: WebSocket | null, message: ClientMessage) {
@@ -171,6 +171,7 @@ function App() {
   }, []);
 
   const connect = (room: string, playerName: string) => {
+    if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
     const normalized = room.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 6);
     if (normalized.length !== 6 || !playerName.trim()) { setError('Nhập tên và mã phòng 6 ký tự.'); return; }
     if (retry.current) clearTimeout(retry.current);
@@ -225,6 +226,7 @@ function App() {
   }, []);
 
   const createRoom = async () => {
+    if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
     if (!name.trim()) { setError('Hãy nhập tên trước.'); return; }
     setError(''); setStatus('Đang tạo phòng…');
     try {
@@ -232,7 +234,10 @@ function App() {
       const data = await response.json() as { code?: string; error?: string };
       if (!response.ok || !data.code) throw new Error(data.error || 'Không tạo được phòng.');
       connect(data.code, name);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Không kết nối được máy chủ.'); setStatus(''); }
+    } catch (e) {
+      setError(e instanceof TypeError ? 'Không kết nối được Worker. Kiểm tra VITE_REALTIME_URL và WEB_ORIGIN.' : e instanceof Error ? e.message : 'Không kết nối được máy chủ.');
+      setStatus('');
+    }
   };
 
   const me = snapshot?.players.find(p => p.id === snapshot.me);
