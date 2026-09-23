@@ -15,10 +15,11 @@ for (let i = 0; i < queue.length; i++) {
     seen.add(key(nx, ny)); queue.push([nx, ny]);
   }
 }
-assert.equal(ROOMS.length, 11);
+assert.equal(ROOMS.length, 16);
 for (const point of [...STATIONS, ...VENTS, ...REACTOR_FIXES]) {
   assert.equal(collides(point.x, point.y), false, `Point is blocked: ${JSON.stringify(point)}`);
   assert.ok(queue.some(([x, y]) => distance({ x: x * cell, y: y * cell }, point) < 20), `Unreachable: ${JSON.stringify(point)}`);
 }
-assert.ok(DOORS.every(door => !collides(door.x + door.w / 2, door.y + door.h / 2)), 'A meeting door is blocked by a wall');
-console.log(`PASS: ${ROOMS.length} rooms, all tasks, vents, reactor points and meeting doors reachable`);
+assert.ok(DOORS.every(door => !collides(door.x + door.w / 2, door.y + door.h / 2)), 'A door is blocked by a wall');
+assert.equal(DOORS.length, ROOMS.length + 3, 'All rooms need a lockable doorway');
+console.log(`PASS: ${ROOMS.length} rooms, all tasks, vents, reactor points and doors reachable`);

@@ -7,7 +7,7 @@ Người chơi nhận ra đường đi, vị trí nhiệm vụ và phòng họp 
 ## Các bước thực hiện
 
 1. **Sửa luồng nhiệm vụ.** Chỉnh ghép dây đúng màu, chặn phím hành động và di chuyển khi mini game mở, chỉ đóng nhiệm vụ khi snapshot xác nhận hoàn thành. Kiểm thử đi tới trạm và hoàn tất một nhiệm vụ với 4 client.
-2. **Thiết kế lại tàu.** Mở rộng bản đồ lên 2100 × 1350, tạo 11 phòng với lối vào thực và phòng họp trung tâm. Dùng chung hình học va chạm giữa trình duyệt và Worker. Kiểm tra mọi trạm, lỗ thông hơi và điểm sửa lò đều đi tới được.
+2. **Thiết kế lại tàu.** Mở rộng bản đồ lên 2800 × 1800, tạo 16 phòng với lối vào thực và phòng họp trung tâm. Dùng chung hình học va chạm giữa trình duyệt và Worker. Kiểm tra mọi trạm, lỗ thông hơi và điểm sửa lò đều đi tới được.
 3. **Làm mượt chuyển động.** Camera theo người chơi; nội suy vị trí trên mỗi khung hình; bước chân, nhịp thân và kính nhân vật chuyển động. Server vẫn quyết định vị trí và luật chơi.
 4. **Hiệu ứng hạ gục.** Worker phát sự kiện hạ gục ngắn hạn, trình duyệt dựng cú lao, vệt chém, vòng xung và xác. Không tiết lộ danh tính hoặc vị trí ngoài phạm vi quan sát.
 5. **Hoàn thiện UX/UI.** Màn vào phòng, sảnh, HUD, danh sách nhiệm vụ theo phòng, bản đồ nhỏ, nút và mini game cùng một ngôn ngữ hình ảnh. Ưu tiên màn hình desktop.
@@ -15,7 +15,7 @@ Người chơi nhận ra đường đi, vị trí nhiệm vụ và phòng họp 
 
 ## Tiêu chí nghiệm thu
 
-- Có thể đi từ phòng họp đến cả năm trạm nhiệm vụ trong 11 phòng, làm nhiệm vụ và nhìn thấy tiến độ tăng. Nối dây nhận xác nhận bắt đầu từ server và ghép đúng ba cặp màu.
+- Có thể đi từ phòng họp đến cả năm trạm nhiệm vụ trong 16 phòng, làm nhiệm vụ và nhìn thấy tiến độ tăng. Nối dây nhận xác nhận bắt đầu từ server và ghép đúng ba cặp màu.
 - Có thể tạo phòng, vào bằng mã/link, bắt đầu trận, họp và bỏ phiếu như trước.
 - Di chuyển không giật theo chu kỳ bản tin; hạ gục có hiệu ứng đồng bộ với xác trên bản đồ.
 - Website production và Worker dùng cùng một phiên bản hình học bản đồ.

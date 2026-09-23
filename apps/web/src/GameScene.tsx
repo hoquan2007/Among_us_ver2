@@ -84,6 +84,36 @@ function roomDetails(ctx: CanvasRenderingContext2D, room: (typeof ROOMS)[number]
   } else if (name === 'ĐIỀU KHIỂN') {
     for (let i = 0; i < 3; i++) screen(x + 37 + i * 121, y + 67, 100, 63, '#8bbbea');
     box(x + 82, y + 211, w - 164, 43, '#36566a');
+  } else if (name === 'NHÀ KÍNH') {
+    for (let i = 0; i < 3; i++) {
+      box(x + 34 + i * 86, y + 78, 65, 106, '#345d50');
+      ctx.fillStyle = '#64c68b'; ctx.beginPath(); ctx.ellipse(x + 65 + i * 86, y + 113, 22, 39, i % 2 ? .4 : -.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#a2e8a0'; ctx.beginPath(); ctx.ellipse(x + 57 + i * 86, y + 111, 8, 24, -.5, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (name === 'KHO HÀNG' || name === 'KHOANG HÀNG') {
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
+      const bx = x + 39 + i * 113, by = y + 78 + j * 114;
+      box(bx, by, 76, 73, i === 1 ? '#5b614d' : '#5c4b46');
+      ctx.strokeStyle = '#e4c07b99'; ctx.lineWidth = 4; ctx.strokeRect(bx + 10, by + 10, 56, 53);
+      ctx.fillStyle = '#f2ce7d'; ctx.fillRect(bx + 35, by + 10, 7, 53);
+    }
+  } else if (name === 'KHÔNG KHÍ') {
+    for (let i = 0; i < 3; i++) {
+      const cx = x + 91 + i * 115, cy = y + 172;
+      ctx.fillStyle = '#2d5664'; ctx.beginPath(); ctx.arc(cx, cy, 44, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#9ae3e2'; ctx.lineWidth = 5; ctx.stroke();
+      for (let j = 0; j < 3; j++) {
+        const a = time * .0008 + j * Math.PI * 2 / 3;
+        ctx.fillStyle = '#86cad4'; ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * 17, cy + Math.sin(a) * 17, 19, 8, a, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else if (name === 'NHÀ CHỨA') {
+    screen(x + 43, y + 70, 95, 56, '#f5c981');
+    for (let i = 0; i < 2; i++) {
+      box(x + 65 + i * 174, y + 164, 124, 93, '#4b6070');
+      ctx.fillStyle = '#c4e6ef'; ctx.fillRect(x + 83 + i * 174, y + 183, 86, 9);
+      ctx.fillStyle = '#f5c981'; ctx.fillRect(x + 83 + i * 174, y + 214, 45, 7);
+    }
   }
   ctx.restore();
 }
@@ -172,14 +202,20 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       ctx.fillStyle = '#07121e'; ctx.fillRect(0, 0, VIEW.width, VIEW.height);
       ctx.save(); ctx.translate(-camera.x, -camera.y);
       ctx.fillStyle = '#0c2030'; ctx.fillRect(0, 0, MAP.width, MAP.height);
-      ctx.fillStyle = '#123346';
-      ctx.fillRect(470, 625, 280, 100); ctx.fillRect(1350, 625, 280, 100);
-      ctx.fillRect(1000, 350, 100, 125); ctx.fillRect(1000, 875, 100, 125);
+      ctx.fillStyle = '#153448';
+      ctx.fillRect(470, 865, 630, 110); ctx.fillRect(1700, 865, 630, 110);
+      ctx.fillRect(1350, 380, 100, 305); ctx.fillRect(1350, 1115, 100, 325);
+      ctx.fillStyle = '#25465b';
+      for (const [px, py] of [[600, 900], [2060, 900], [1400, 490], [1400, 1300]]) {
+        ctx.beginPath(); ctx.arc(px, py, 37, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#8ccbc04d'; ctx.lineWidth = 4; ctx.stroke();
+        ctx.fillStyle = '#25465b';
+      }
       ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 1;
       for (let x = 0; x <= MAP.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, MAP.height); ctx.stroke(); }
       for (let y = 0; y <= MAP.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(MAP.width, y); ctx.stroke(); }
       ctx.setLineDash([23, 19]); ctx.strokeStyle = '#7ec7c32b'; ctx.lineWidth = 4;
-      for (const [ax, ay, bx, by] of [[460, 675, 750, 675], [1350, 675, 1640, 675], [1050, 340, 1050, 475], [1050, 875, 1050, 1010]]) {
+      for (const [ax, ay, bx, by] of [[470, 920, 1100, 920], [1700, 920, 2330, 920], [1400, 380, 1400, 685], [1400, 1115, 1400, 1440]]) {
         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -187,7 +223,8 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       ctx.strokeRect(23, 23, MAP.width - 46, MAP.height - 46);
       for (const room of ROOMS) {
         const meeting = room.kind === 'meeting';
-        ctx.fillStyle = meeting ? '#173d4a' : '#152d3c';
+        const hue = room.name === 'NHÀ KÍNH' ? '#284a3c' : room.name === 'LÒ PHẢN ỨNG' ? '#274557' : room.name === 'KHO NHIÊN LIỆU' ? '#4c4332' : room.name === 'Y TẾ' ? '#31515a' : room.name === 'KHO HÀNG' || room.name === 'KHOANG HÀNG' ? '#3d4351' : room.name === 'KHÔNG KHÍ' ? '#214953' : '#152d3c';
+        ctx.fillStyle = meeting ? '#173d4a' : hue;
         ctx.fillRect(room.x, room.y, room.w, room.h);
         ctx.fillStyle = meeting ? '#64d7d122' : '#ffffff0b';
         for (let x = room.x + 35; x < room.x + room.w - 25; x += 72) {

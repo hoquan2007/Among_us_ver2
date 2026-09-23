@@ -1,4 +1,4 @@
-export const MAP = { width: 2100, height: 1350 } as const;
+export const MAP = { width: 2800, height: 1800 } as const;
 export const VIEW = { width: 1080, height: 660 } as const;
 export const SPEED = 205;
 export const INTERACT_RANGE = 90;
@@ -8,17 +8,22 @@ export const COLORS = ['#ff687a', '#58b8ff', '#f6c65b', '#b28cff', '#60d5a0', '#
 type Rect = { x: number; y: number; w: number; h: number };
 type Room = Rect & { name: string; kind: 'station' | 'meeting'; door: 'top' | 'bottom' | 'left' | 'right' | 'cross' };
 export const ROOMS: Room[] = [
-  { x: 40, y: 40, w: 420, h: 300, name: 'PHÒNG ĐIỆN', kind: 'station', door: 'right' },
-  { x: 530, y: 40, w: 260, h: 250, name: 'BẢO AN', kind: 'station', door: 'bottom' },
-  { x: 830, y: 40, w: 440, h: 300, name: 'Y TẾ', kind: 'station', door: 'bottom' },
-  { x: 1310, y: 40, w: 260, h: 250, name: 'LIÊN LẠC', kind: 'station', door: 'bottom' },
-  { x: 1640, y: 40, w: 420, h: 300, name: 'DỮ LIỆU', kind: 'station', door: 'left' },
-  { x: 40, y: 505, w: 420, h: 310, name: 'LÒ PHẢN ỨNG', kind: 'station', door: 'right' },
-  { x: 750, y: 475, w: 600, h: 400, name: 'PHÒNG HỌP', kind: 'meeting', door: 'cross' },
-  { x: 1640, y: 505, w: 420, h: 310, name: 'QUAN SÁT', kind: 'station', door: 'left' },
-  { x: 40, y: 1010, w: 420, h: 300, name: 'KHO NHIÊN LIỆU', kind: 'station', door: 'right' },
-  { x: 830, y: 1010, w: 440, h: 300, name: 'ĐỘNG CƠ', kind: 'station', door: 'top' },
-  { x: 1640, y: 1010, w: 420, h: 300, name: 'ĐIỀU KHIỂN', kind: 'station', door: 'left' }
+  { x: 40, y: 40, w: 430, h: 340, name: 'PHÒNG ĐIỆN', kind: 'station', door: 'right' },
+  { x: 720, y: 40, w: 420, h: 300, name: 'BẢO AN', kind: 'station', door: 'bottom' },
+  { x: 1180, y: 40, w: 440, h: 340, name: 'Y TẾ', kind: 'station', door: 'bottom' },
+  { x: 1660, y: 40, w: 420, h: 300, name: 'LIÊN LẠC', kind: 'station', door: 'bottom' },
+  { x: 2330, y: 40, w: 430, h: 340, name: 'DỮ LIỆU', kind: 'station', door: 'left' },
+  { x: 40, y: 520, w: 430, h: 340, name: 'LÒ PHẢN ỨNG', kind: 'station', door: 'right' },
+  { x: 720, y: 550, w: 300, h: 280, name: 'NHÀ KÍNH', kind: 'station', door: 'right' },
+  { x: 1100, y: 685, w: 600, h: 430, name: 'PHÒNG HỌP', kind: 'meeting', door: 'cross' },
+  { x: 2330, y: 520, w: 430, h: 340, name: 'QUAN SÁT', kind: 'station', door: 'left' },
+  { x: 40, y: 1000, w: 430, h: 340, name: 'KHO NHIÊN LIỆU', kind: 'station', door: 'right' },
+  { x: 2330, y: 1000, w: 430, h: 340, name: 'ĐIỀU KHIỂN', kind: 'station', door: 'left' },
+  { x: 40, y: 1440, w: 430, h: 320, name: 'KHO HÀNG', kind: 'station', door: 'right' },
+  { x: 720, y: 1440, w: 420, h: 320, name: 'KHÔNG KHÍ', kind: 'station', door: 'top' },
+  { x: 1180, y: 1440, w: 440, h: 320, name: 'ĐỘNG CƠ', kind: 'station', door: 'top' },
+  { x: 1660, y: 1440, w: 420, h: 320, name: 'KHOANG HÀNG', kind: 'station', door: 'top' },
+  { x: 2330, y: 1440, w: 430, h: 320, name: 'NHÀ CHỨA', kind: 'station', door: 'left' }
 ];
 // Each room has a 116px doorway. The meeting room has four entrances.
 export const WALLS: Rect[] = ROOMS.flatMap(room => {
@@ -36,23 +41,26 @@ export const WALLS: Rect[] = ROOMS.flatMap(room => {
     ...vertical(room.x + room.w - thick, room.door === 'right' || room.door === 'cross')
   ];
 });
-export const DOORS: Rect[] = [
-  { x: 750, y: 617, w: 18, h: 116 }, { x: 1332, y: 617, w: 18, h: 116 },
-  { x: 992, y: 475, w: 116, h: 18 }, { x: 992, y: 857, w: 116, h: 18 }
-];
+export const DOORS: Rect[] = ROOMS.flatMap(room => {
+  const horizontal = (y: number): Rect => ({ x: room.x + room.w / 2 - 58, y, w: 116, h: 18 });
+  const vertical = (x: number): Rect => ({ x, y: room.y + room.h / 2 - 58, w: 18, h: 116 });
+  return room.door === 'cross'
+    ? [horizontal(room.y), horizontal(room.y + room.h - 18), vertical(room.x), vertical(room.x + room.w - 18)]
+    : [room.door === 'top' ? horizontal(room.y) : room.door === 'bottom' ? horizontal(room.y + room.h - 18) : vertical(room.door === 'left' ? room.x : room.x + room.w - 18)];
+});
 export const STATIONS = [
-  { id: 'wires', name: 'Nối mạch điện', room: 'PHÒNG ĐIỆN', x: 250, y: 190, icon: '⚡' },
-  { id: 'fuel', name: 'Nạp nhiên liệu', room: 'KHO NHIÊN LIỆU', x: 250, y: 1160, icon: '◈' },
-  { id: 'scan', name: 'Quét sinh học', room: 'Y TẾ', x: 1050, y: 170, icon: '✚' },
-  { id: 'upload', name: 'Tải dữ liệu', room: 'DỮ LIỆU', x: 1850, y: 190, icon: '▣' },
-  { id: 'calibrate', name: 'Hiệu chỉnh lái', room: 'ĐIỀU KHIỂN', x: 1850, y: 1160, icon: '◎' }
+  { id: 'wires', name: 'Nối mạch điện', room: 'PHÒNG ĐIỆN', x: 255, y: 210, icon: '⚡' },
+  { id: 'fuel', name: 'Nạp nhiên liệu', room: 'KHO NHIÊN LIỆU', x: 255, y: 1160, icon: '◈' },
+  { id: 'scan', name: 'Quét sinh học', room: 'Y TẾ', x: 1400, y: 210, icon: '✚' },
+  { id: 'upload', name: 'Tải dữ liệu', room: 'DỮ LIỆU', x: 2545, y: 210, icon: '▣' },
+  { id: 'calibrate', name: 'Hiệu chỉnh lái', room: 'ĐIỀU KHIỂN', x: 2545, y: 1160, icon: '◎' }
 ] as const;
 export const VENTS = [
-  { x: 360, y: 260, to: 1 }, { x: 1050, y: 1170, to: 0 },
-  { x: 1740, y: 260, to: 3 }, { x: 1050, y: 675, to: 2 }
+  { x: 365, y: 290, to: 1 }, { x: 1400, y: 1590, to: 0 },
+  { x: 2435, y: 290, to: 3 }, { x: 1400, y: 900, to: 2 }
 ] as const;
-export const REACTOR_FIXES = [{ x: 250, y: 660 }, { x: 1850, y: 660 }] as const;
-export const EMERGENCY = { x: 1050, y: 675 } as const;
+export const REACTOR_FIXES = [{ x: 255, y: 690 }, { x: 2545, y: 690 }] as const;
+export const EMERGENCY = { x: 1400, y: 900 } as const;
 
 export type Phase = 'lobby' | 'playing' | 'meeting' | 'ended';
 export type Role = 'crew' | 'impostor';
@@ -65,15 +73,15 @@ export interface ChatMessage { id: string; name: string; text: string; at: numbe
 export interface Snapshot {
   type: 'snapshot'; code: string; phase: Phase; me: string; host: string; players: PublicPlayer[];
   role: Role | null; allies: string[]; tasks: string[]; completedTasks: string[]; taskProgress: number;
-  bodies: Body[]; kills: KillEffect[]; sabotage: Sabotage; reactorDeadline: number; reactorFixed: number[]; lightsFixed: boolean;
+  bodies: Body[]; kills: KillEffect[]; sabotage: Sabotage; reactorDeadline: number; reactorFixed: number[]; reactorWindowEndsAt: number; lightsFixed: boolean;
   doorsUntil: number; sabotageReadyAt: number; killReadyAt: number; emergencyUsed: number;
-  meeting: null | { stage: MeetingStage; endsAt: number; reporter: string; reason: string; votesCast: string[]; ejected: string | null; skipped: boolean };
+  meeting: null | { stage: MeetingStage; endsAt: number; reporter: string; reason: string; votesCast: string[]; endVotes: string[]; ejected: string | null; skipped: boolean };
   chat: ChatMessage[]; winner: Role | null; winnerReason: string; serverTime: number;
 }
 export type ClientMessage =
   | { type: 'move'; dx: number; dy: number } | { type: 'start' } | { type: 'taskStart'; id: string }
   | { type: 'taskComplete'; id: string } | { type: 'kill'; target: string } | { type: 'report'; body: string }
-  | { type: 'emergency' } | { type: 'vote'; target: string | null } | { type: 'chat'; text: string }
+  | { type: 'emergency' } | { type: 'vote'; target: string | null } | { type: 'endMeeting' } | { type: 'chat'; text: string }
   | { type: 'sabotage'; kind: Exclude<Sabotage, null> } | { type: 'fix'; point?: number }
   | { type: 'vent'; index: number } | { type: 'restart' };
 export type ServerMessage = Snapshot | { type: 'welcome'; token: string; id: string } | { type: 'taskReady'; id: string } | { type: 'error'; message: string };

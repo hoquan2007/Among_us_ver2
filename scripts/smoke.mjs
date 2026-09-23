@@ -8,6 +8,7 @@ const quickMode = process.argv.includes('--quick');
 const wireMode = process.argv.includes('--wire');
 const taskMode = process.argv.includes('--task') || wireMode;
 const killMode = process.argv.includes('--kill');
+const endMeetingMode = process.argv.includes('--end-meeting');
 const response = await fetch(`${base}/rooms`, { method: 'POST', headers: { Origin: origin } });
 assert.equal(response.status, 201);
 const { code } = await response.json();
@@ -64,7 +65,7 @@ if (taskMode) {
   const crew = clients.find(client => client !== host && latest(client).role === 'crew');
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const walk = async (axis, goal) => {
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 100; i++) {
       const me = latest(crew).players.find(p => p.id === latest(crew).me);
       if (Math.abs(me[axis] - goal) < 18) return;
       const sign = Math.sign(goal - me[axis]);
@@ -75,13 +76,13 @@ if (taskMode) {
   };
   await delay(150);
   if (wireMode) {
-    await walk('y', 675);
-    await walk('x', 500);
-    await walk('y', 190);
+    await walk('y', 920);
+    await walk('x', 590);
+    await walk('y', 210);
     await walk('x', 300);
   } else {
-    await walk('x', 1050);
-    await walk('y', 245);
+    await walk('x', 1400);
+    await walk('y', 260);
   }
   const taskId = wireMode ? 'wires' : 'scan';
   // Reproduce the former race: opening a task immediately after a movement packet.
@@ -98,6 +99,19 @@ host.socket.send(JSON.stringify({ type: 'emergency' }));
 await waitFor(() => latest(host)?.phase === 'meeting');
 assert.equal(latest(host).phase, 'meeting');
 assert.equal(latest(host).meeting.stage, 'discussion');
+if (endMeetingMode) {
+  for (const client of clients.slice(0, 3)) {
+    client.socket.send(JSON.stringify({ type: 'endMeeting' }));
+    await new Promise(resolve => setTimeout(resolve, 60));
+  }
+  await waitFor(() => latest(host).meeting?.stage === 'result');
+  assert.equal(latest(host).meeting.skipped, true);
+  assert.equal(latest(host).meeting.endVotes.length, 3);
+  await waitFor(() => latest(host).phase === 'playing');
+  for (const client of clients) client.socket.close();
+  console.log(`PASS: room ${code}, majority ended meeting early`);
+  process.exit(0);
+}
 if (quickMode) {
   for (const client of clients) client.socket.close();
   console.log(`PASS: room ${code}, four players, roles hidden, meeting opened`);

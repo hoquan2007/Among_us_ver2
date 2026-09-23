@@ -80,6 +80,23 @@ kbd{background:#173544;color:#c9f7ed;border-color:#6eb9b3}
 .meeting-modal{width:min(980px,100%)}.meeting-modal h2{font-size:54px}
 .timer{color:#ffb3a7}
 .toast{box-shadow:0 15px 40px #0008}
+.music-toggle{white-space:nowrap;color:#9ee6d5;border-color:#4a8f91}
+.music-toggle[aria-pressed=false]{color:#85a0a9}
+.sabotage-panel{border-color:#aa657355;background:linear-gradient(145deg,#302a37,#132a38)}
+.sabotage-panel h3{color:#ffb4b2}
+.sabotage-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:13px 0}
+.sabotage-actions button{display:flex;align-items:center;gap:10px;text-align:left;min-height:58px;padding:10px 12px;border-radius:11px;font-weight:700}
+.sabotage-actions button:last-child{grid-column:span 2}
+.sabotage-icon{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:8px;background:#e9717430;color:#ffc6b7;font-size:18px}
+.sabotage-alert{display:grid;gap:5px;line-height:1.4;animation:alertPulse 2.5s ease-in-out infinite}
+.sabotage-alert strong{font-size:14px;letter-spacing:.08em}
+.sabotage-alert span{font-size:11px;color:#ffdad4}
+@keyframes alertPulse{50%{box-shadow:0 0 24px #d65a6445}}
+.meeting-tools{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:16px}
+.end-meeting{display:flex;align-items:center;gap:10px;color:#a5ccd0;font-size:12px;font-weight:700}
+.end-meeting button{padding:10px 13px;border:1px solid #78cbb8;border-radius:9px;background:#20594f;color:#e4fff6;font-weight:800}
+.end-meeting button:disabled{opacity:.55}
+@media(max-width:720px){.meeting-tools,.end-meeting{align-items:flex-start;flex-direction:column}.meeting-tools{gap:9px}.topbar{gap:8px}.music-toggle{font-size:11px}}
 @media(max-width:1150px){.game-layout{grid-template-columns:1fr}.sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.map-footer{flex-wrap:wrap}}
 @media(max-width:720px){.landing-card{padding:28px}.landing h1{font-size:70px}.lobby-main h2{font-size:54px}.lobby-guide{grid-template-columns:1fr}.sidebar{grid-template-columns:1fr}.map-header h2{font-size:30px}.map-footer{font-size:10px}.map-footer span:last-child{display:none}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}

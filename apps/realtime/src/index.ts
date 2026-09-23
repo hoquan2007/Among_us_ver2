@@ -16,7 +16,7 @@ interface Player {
 }
 interface Meeting {
   stage: MeetingStage; endsAt: number; reporter: string; reason: string;
-  ejected: string | null; skipped: boolean;
+  ejected: string | null; skipped: boolean; endVotes: string[];
 }
 interface Game {
   code: string; createdAt: number; phase: Phase; host: string;
@@ -33,6 +33,7 @@ const roomCode = () => {
   return Array.from(random, n => chars[n % chars.length]).join('');
 };
 const cleanName = (input: string) => input.trim().replace(/[\x00-\x1f<>]/g, '').slice(0, 16) || 'Phi hành gia';
+const REACTOR_WINDOW = 20_000;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -155,6 +156,9 @@ export class GameRoom extends DurableObject<Env> {
     const now = Date.now();
     if (g.phase === 'meeting' && g.meeting && now >= g.meeting.endsAt) this.advanceMeeting(now);
     if (g.phase === 'playing' && g.sabotage === 'reactor' && now >= g.reactorDeadline) this.end('impostor', 'Lò phản ứng phát nổ');
+    if (g.phase === 'playing' && g.sabotage === 'reactor' && g.reactorFixed.length && now >= this.reactorWindowEndsAt()) {
+      g.reactorFixed = []; g.reactorFixers = {};
+    }
     if (g.sabotage === 'doors' && now >= g.doorsUntil) { g.sabotage = null; g.doorsUntil = 0; }
     for (const p of [...g.players]) {
       if (p.connected || !p.disconnectedAt || now - p.disconnectedAt < 60_000) continue;
@@ -234,6 +238,17 @@ export class GameRoom extends DurableObject<Env> {
       if (m.target !== null && !g.players.some(x => x.id === m.target && x.alive)) return;
       p.votes = m.target;
       if (g.players.filter(x => x.alive).every(x => x.votes !== undefined)) this.advanceMeeting(now);
+    } else if (m.type === 'endMeeting') {
+      const meeting = g.meeting;
+      if (g.phase !== 'meeting' || !meeting || meeting.stage !== 'discussion' || !p.alive || !p.connected) return;
+      meeting.endVotes ??= [];
+      if (meeting.endVotes.includes(p.id)) return;
+      meeting.endVotes.push(p.id);
+      const eligible = g.players.filter(x => x.alive && x.connected).length;
+      if (meeting.endVotes.length > eligible / 2) {
+        meeting.stage = 'result'; meeting.skipped = true; meeting.ejected = null; meeting.endsAt = now + 5_000;
+        g.chat.push({ id: crypto.randomUUID(), name: 'Hệ thống', text: 'Đa số đã chọn kết thúc cuộc họp.', at: now, ghost: false });
+      }
     } else if (m.type === 'chat') {
       if (g.phase !== 'meeting' || typeof m.text !== 'string') return;
       const text = m.text.trim().slice(0, 180);
@@ -248,7 +263,7 @@ export class GameRoom extends DurableObject<Env> {
       g.lightsFixed = m.kind !== 'lights';
       g.reactorFixed = [];
       g.reactorFixers = {};
-      g.reactorDeadline = m.kind === 'reactor' ? now + 45_000 : 0;
+      g.reactorDeadline = m.kind === 'reactor' ? now + 90_000 : 0;
       g.doorsUntil = m.kind === 'doors' ? now + 12_000 : 0;
       for (const x of g.players.filter(x => x.role === 'impostor')) x.sabotageReadyAt = now + 35_000;
       if (m.kind === 'doors') await this.ctx.storage.setAlarm(g.doorsUntil);
@@ -258,12 +273,12 @@ export class GameRoom extends DurableObject<Env> {
         g.sabotage = null; g.lightsFixed = true;
       } else if (g.sabotage === 'reactor' && (m.point === 0 || m.point === 1) && distance(p, REACTOR_FIXES[m.point]) <= INTERACT_RANGE) {
         g.reactorFixers ??= {};
-        for (const key of Object.keys(g.reactorFixers)) if (now - g.reactorFixers[Number(key)].at > 5000) delete g.reactorFixers[Number(key)];
+        for (const key of Object.keys(g.reactorFixers)) if (now - g.reactorFixers[Number(key)].at >= REACTOR_WINDOW) delete g.reactorFixers[Number(key)];
         const other = g.reactorFixers[m.point === 0 ? 1 : 0];
         if (other?.id === p.id) return 'Cần hai người sửa lò phản ứng.';
         g.reactorFixers[m.point] = { id: p.id, at: now };
         g.reactorFixed = Object.keys(g.reactorFixers).map(Number);
-        if (g.reactorFixed.length === 2) { g.sabotage = null; g.reactorDeadline = 0; g.reactorFixers = {}; }
+        if (g.reactorFixed.length === 2) { g.sabotage = null; g.reactorDeadline = 0; g.reactorFixers = {}; g.reactorFixed = []; }
       }
     } else if (m.type === 'vent') {
       if (g.phase !== 'playing' || p.role !== 'impostor' || !p.alive || !Number.isInteger(m.index)) return;
@@ -289,7 +304,7 @@ export class GameRoom extends DurableObject<Env> {
     g.winner = null; g.winnerReason = ''; g.lightsFixed = true; g.reactorDeadline = 0;
     g.players.forEach((p, i) => {
       p.role = impostors.has(p.id) ? 'impostor' : 'crew'; p.alive = true;
-      p.x = 990 + i % 5 * 30; p.y = 625 + Math.floor(i / 5) * 90;
+      p.x = 1340 + i % 5 * 30; p.y = 850 + Math.floor(i / 5) * 100;
       p.tasks = p.role === 'crew' ? STATIONS.map(s => s.id) : [];
       p.completedTasks = []; p.taskStarted = {}; p.killReadyAt = now + 20_000;
       p.sabotageReadyAt = now + 15_000; p.emergencyUsed = 0; p.lastMoveAt = now;
@@ -300,9 +315,9 @@ export class GameRoom extends DurableObject<Env> {
     const g = this.game!;
     g.phase = 'meeting'; g.sabotage = null; g.reactorDeadline = 0; g.doorsUntil = 0;
     g.bodies = [];
-    g.meeting = { stage: 'discussion', endsAt: now + 45_000, reporter: p.id, reason, ejected: null, skipped: false };
+    g.meeting = { stage: 'discussion', endsAt: now + 45_000, reporter: p.id, reason, ejected: null, skipped: false, endVotes: [] };
     g.chat = [{ id: crypto.randomUUID(), name: 'Hệ thống', text: `${p.name}: ${reason}`, at: now, ghost: false }];
-    g.players.forEach(x => { x.votes = undefined; x.x = 990 + g.players.indexOf(x) % 5 * 30; x.y = 625 + Math.floor(g.players.indexOf(x) / 5) * 90; });
+    g.players.forEach(x => { x.votes = undefined; x.x = 1340 + g.players.indexOf(x) % 5 * 30; x.y = 850 + Math.floor(g.players.indexOf(x) / 5) * 100; });
   }
 
   private advanceMeeting(now: number): void {
@@ -358,6 +373,10 @@ export class GameRoom extends DurableObject<Env> {
     return DOORS.some(door => hitsRect(x, y, door));
   }
 
+  private reactorWindowEndsAt(): number {
+    return Math.min(...Object.values(this.game?.reactorFixers || {}).map(fix => fix.at + REACTOR_WINDOW));
+  }
+
   private snapshot(p: Player): Snapshot {
     const g = this.game!;
     const now = Date.now();
@@ -372,7 +391,8 @@ export class GameRoom extends DurableObject<Env> {
       role: p.role, allies: p.role === 'impostor' || g.phase === 'ended' ? g.players.filter(x => x.role === 'impostor').map(x => x.id) : [],
       tasks: p.tasks, completedTasks: p.completedTasks, taskProgress: totalTasks ? doneTasks / totalTasks : 0,
       bodies: g.bodies.filter(visible), kills: (g.kills || []).filter(effect => now - effect.at < 1800 && visible(effect)).map(effect => ({ ...effect, actor: p.role === 'impostor' || g.phase === 'ended' ? effect.actor : '' })), sabotage: g.sabotage, reactorDeadline: g.reactorDeadline,
-      reactorFixed: g.reactorFixed, lightsFixed: g.lightsFixed, doorsUntil: g.doorsUntil,
+      reactorFixed: g.reactorFixed, reactorWindowEndsAt: g.reactorFixed.length ? this.reactorWindowEndsAt() : 0,
+      lightsFixed: g.lightsFixed, doorsUntil: g.doorsUntil,
       sabotageReadyAt: p.sabotageReadyAt, killReadyAt: p.killReadyAt, emergencyUsed: p.emergencyUsed,
       meeting: g.meeting ? { ...g.meeting, votesCast: g.players.filter(x => x.votes !== undefined).map(x => x.id) } : null,
       chat: g.chat.filter(x => !x.ghost || !p.alive), winner: g.winner, winnerReason: g.winnerReason,
@@ -408,6 +428,7 @@ export class GameRoom extends DurableObject<Env> {
     const deadlines = [
       g.phase === 'meeting' ? g.meeting?.endsAt : 0,
       g.phase === 'playing' && g.sabotage === 'reactor' ? g.reactorDeadline : 0,
+      g.phase === 'playing' && g.sabotage === 'reactor' && g.reactorFixed.length ? this.reactorWindowEndsAt() : 0,
       g.sabotage === 'doors' ? g.doorsUntil : 0,
       ...g.players.filter(p => !p.connected && p.disconnectedAt).map(p => p.disconnectedAt + 60_000),
       g.createdAt + 60 * 60_000
