@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="340" viewBox="0 0 430 340">
+  <defs>
+    <radialGradient id="heat"><stop stop-color="#336878"/><stop offset=".55" stop-color="#203d50"/><stop offset="1" stop-color="#152b3c"/></radialGradient>
+    <pattern id="grate" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M0 0h28M0 0v28" stroke="#a0c9c5" stroke-opacity=".09" stroke-width="2"/><path d="M9 10h10M9 18h10" stroke="#86dbd4" stroke-opacity=".1" stroke-width="2"/></pattern>
+    <linearGradient id="hazard"><stop stop-color="#f6d28b"/><stop offset=".5" stop-color="#5f6460"/><stop offset="1" stop-color="#f6d28b"/></linearGradient>
+  </defs>
+  <rect width="430" height="340" fill="url(#heat)"/>
+  <rect width="430" height="340" fill="url(#grate)"/>
+  <path d="M28 65h374M28 275h374" stroke="#3e697a" stroke-width="25"/>
+  <path d="M28 65h374M28 275h374" stroke="#bde9e2" stroke-opacity=".35" stroke-width="3"/>
+  <path d="M37 136h356M37 204h356" stroke="#071c2c" stroke-width="12"/>
+  <path d="M37 136h356M37 204h356" stroke="#62b6bd" stroke-opacity=".35" stroke-width="3"/>
+  <g fill="none" stroke="url(#hazard)" stroke-width="8" stroke-dasharray="14 9"><circle cx="100" cy="170" r="85"/><circle cx="330" cy="170" r="85"/></g>
+  <g fill="none" stroke="#85eddf" stroke-opacity=".35" stroke-width="3"><circle cx="100" cy="170" r="76"/><circle cx="330" cy="170" r="76"/></g>
+  <path d="M180 150h70M180 190h70" stroke="#9febdf" stroke-opacity=".5" stroke-width="5"/>
+  <g fill="#edbd70"><rect x="28" y="27" width="17" height="7" rx="2"/><rect x="385" y="27" width="17" height="7" rx="2"/><rect x="28" y="306" width="17" height="7" rx="2"/><rect x="385" y="306" width="17" height="7" rx="2"/></g>
+</svg>

@@ -1,8 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { DOORS, EMERGENCY, MAP, REACTOR_FIXES, ROOMS, SPEED, STATIONS, VENTS, VIEW, WALLS, collides, hitsRect, type PublicPlayer, type Snapshot } from '../../../packages/protocol/src/index';
+import electricalTexture from './assets/electrical.svg?url';
+import reactorTexture from './assets/reactor.svg?url';
+import meetingTexture from './assets/meeting.svg?url';
 
 const accent = '#78e7d7';
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
+const roomTextures = new Map<string, HTMLImageElement>();
+for (const [name, url] of [['PHÒNG ĐIỆN', electricalTexture], ['LÒ PHẢN ỨNG', reactorTexture], ['PHÒNG HỌP', meetingTexture]]) {
+  const texture = new Image(); texture.src = url; roomTextures.set(name, texture);
+}
 
 function roomDetails(ctx: CanvasRenderingContext2D, room: (typeof ROOMS)[number], time: number) {
   const { x, y, w, h, name } = room;
@@ -154,7 +161,13 @@ function astronaut(ctx: CanvasRenderingContext2D, p: PublicPlayer, x: number, y:
 export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInteract: () => void; pressed: { current: Set<string> } }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef(game);
+  const clockOffset = useRef(0);
+  const lastServerTime = useRef(0);
   gameRef.current = game;
+  if (game.serverTime !== lastServerTime.current) {
+    clockOffset.current = game.serverTime - Date.now();
+    lastServerTime.current = game.serverTime;
+  }
   useEffect(() => {
     const canvas = ref.current, ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -164,6 +177,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
     const camera = { x: (MAP.width - VIEW.width) / 2, y: (MAP.height - VIEW.height) / 2 };
     const draw = (time: number) => {
       const g = gameRef.current;
+      const now = Date.now() + clockOffset.current;
       const dt = Math.min(48, time - last); last = time;
       const targets = new Set(g.players.map(p => p.id));
       for (const id of rendered.keys()) if (!targets.has(id)) rendered.delete(id);
@@ -178,7 +192,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
           const dy = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup'));
           const magnitude = Math.hypot(dx, dy) || 1;
           const vx = dx / magnitude * SPEED * dt / 1000, vy = dy / magnitude * SPEED * dt / 1000;
-          const blocked = (x: number, y: number) => p.alive && (collides(x, y) || (g.sabotage === 'doors' && Date.now() < g.doorsUntil && DOORS.some(door => hitsRect(x, y, door))));
+          const blocked = (x: number, y: number) => p.alive && (collides(x, y) || (g.sabotage === 'doors' && now < g.doorsUntil && DOORS.some(door => hitsRect(x, y, door))));
           if (!blocked(r.x + vx, r.y)) r.x = clamp(r.x + vx, 24, MAP.width - 24);
           if (!blocked(r.x, r.y + vy)) r.y = clamp(r.y + vy, 24, MAP.height - 24);
           const correction = dx || dy ? .018 : .13;
@@ -197,6 +211,9 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         camera.x += (clamp(me.x - VIEW.width / 2, 0, MAP.width - VIEW.width) - camera.x) * (1 - Math.exp(-dt / 150));
         camera.y += (clamp(me.y - VIEW.height / 2, 0, MAP.height - VIEW.height) - camera.y) * (1 - Math.exp(-dt / 150));
       }
+      const onScreen = (x: number, y: number, w = 0, h = 0, pad = 64) =>
+        x + w >= camera.x - pad && x <= camera.x + VIEW.width + pad &&
+        y + h >= camera.y - pad && y <= camera.y + VIEW.height + pad;
       ctx.setTransform(2, 0, 0, 2, 0, 0);
       ctx.clearRect(0, 0, VIEW.width, VIEW.height);
       ctx.fillStyle = '#07121e'; ctx.fillRect(0, 0, VIEW.width, VIEW.height);
@@ -222,10 +239,13 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       ctx.strokeStyle = '#58a8bc22'; ctx.lineWidth = 2;
       ctx.strokeRect(23, 23, MAP.width - 46, MAP.height - 46);
       for (const room of ROOMS) {
+        if (!onScreen(room.x, room.y, room.w, room.h)) continue;
         const meeting = room.kind === 'meeting';
         const hue = room.name === 'NHÀ KÍNH' ? '#284a3c' : room.name === 'LÒ PHẢN ỨNG' ? '#274557' : room.name === 'KHO NHIÊN LIỆU' ? '#4c4332' : room.name === 'Y TẾ' ? '#31515a' : room.name === 'KHO HÀNG' || room.name === 'KHOANG HÀNG' ? '#3d4351' : room.name === 'KHÔNG KHÍ' ? '#214953' : '#152d3c';
         ctx.fillStyle = meeting ? '#173d4a' : hue;
         ctx.fillRect(room.x, room.y, room.w, room.h);
+        const texture = roomTextures.get(room.name);
+        if (texture?.complete && texture.naturalWidth) ctx.drawImage(texture, room.x, room.y, room.w, room.h);
         ctx.fillStyle = meeting ? '#64d7d122' : '#ffffff0b';
         for (let x = room.x + 35; x < room.x + room.w - 25; x += 72) {
           for (let y = room.y + 40; y < room.y + room.h - 25; y += 72) ctx.fillRect(x, y, 3, 3);
@@ -245,18 +265,21 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         }
       }
       for (const wall of WALLS) {
+        if (!onScreen(wall.x, wall.y, wall.w, wall.h)) continue;
         ctx.fillStyle = '#07152199'; ctx.fillRect(wall.x + 5, wall.y + 6, wall.w, wall.h);
         ctx.fillStyle = '#32566a'; ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
         ctx.fillStyle = '#75b6bd88'; ctx.fillRect(wall.x, wall.y, wall.w, 3);
         ctx.fillStyle = '#091d2b'; ctx.fillRect(wall.x + 5, wall.y + wall.h - 4, Math.max(0, wall.w - 10), 2);
       }
-      if (g.sabotage === 'doors' && Date.now() < g.doorsUntil) {
+      if (g.sabotage === 'doors' && now < g.doorsUntil) {
         for (const door of DOORS) {
+          if (!onScreen(door.x, door.y, door.w, door.h)) continue;
           ctx.fillStyle = '#d34d61'; ctx.fillRect(door.x, door.y, door.w, door.h);
           ctx.strokeStyle = '#ffb4b4'; ctx.lineWidth = 3; ctx.strokeRect(door.x + 2, door.y + 2, door.w - 4, door.h - 4);
         }
       }
       for (const station of STATIONS) {
+        if (!onScreen(station.x, station.y, 0, 0, 95)) continue;
         const active = g.tasks.includes(station.id) && !g.completedTasks.includes(station.id);
         const pulse = active ? 3 + Math.sin(time * .004) * 2 : 0;
         ctx.fillStyle = active ? '#48d9d42b' : '#63829129';
@@ -269,6 +292,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillText(station.name, station.x, station.y + 48);
       }
       for (const vent of VENTS) {
+        if (!onScreen(vent.x, vent.y)) continue;
         ctx.fillStyle = '#101e2a'; ctx.beginPath(); ctx.roundRect(vent.x - 23, vent.y - 15, 46, 30, 6); ctx.fill();
         ctx.strokeStyle = '#789eac'; ctx.lineWidth = 2; ctx.stroke();
         for (let i = -10; i <= 10; i += 10) { ctx.beginPath(); ctx.moveTo(vent.x - 14, vent.y + i / 2); ctx.lineTo(vent.x + 14, vent.y + i / 2); ctx.stroke(); }
@@ -281,8 +305,9 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillStyle = '#fff'; ctx.font = '800 23px system-ui'; ctx.fillText('!', point.x, point.y + 8);
       }
       for (const body of g.bodies) {
+        if (!onScreen(body.x, body.y)) continue;
         const effect = g.kills?.find(k => k.target === body.playerId);
-        if (effect && Date.now() - effect.at < 430) continue;
+        if (effect && now - effect.at < 430) continue;
         ctx.fillStyle = '#020b18a6'; ctx.beginPath(); ctx.ellipse(body.x, body.y + 14, 29, 9, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = body.color; ctx.beginPath(); ctx.roundRect(body.x - 23, body.y - 8, 42, 23, 9); ctx.fill();
         ctx.fillStyle = '#bce7f0'; ctx.beginPath(); ctx.roundRect(body.x + 3, body.y - 13, 21, 12, 5); ctx.fill();
@@ -290,13 +315,14 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       }
       for (const p of [...g.players].sort((a, b) => a.y - b.y)) {
         const r = rendered.get(p.id)!;
-        const effect = g.kills?.find(k => k.target === p.id && Date.now() - k.at < 650);
-        const attack = g.kills?.find(k => k.actor === p.id && Date.now() - k.at < 450);
-        const lunge = attack ? Math.sin(Math.PI * (Date.now() - attack.at) / 450) * .27 : 0;
+        if (!onScreen(r.x, r.y)) continue;
+        const effect = g.kills?.find(k => k.target === p.id && now - k.at < 650);
+        const attack = g.kills?.find(k => k.actor === p.id && now - k.at < 450);
+        const lunge = attack ? Math.sin(Math.PI * (now - attack.at) / 450) * .27 : 0;
         astronaut(ctx, p, r.x + (attack ? (attack.x - r.x) * lunge : 0), r.y + (attack ? (attack.y - r.y) * lunge : 0), r.moving, r.phase, p.id === g.me, g.allies.includes(p.id) && p.id !== g.me, !!effect);
       }
       for (const effect of g.kills || []) {
-        const age = Date.now() - effect.at;
+        const age = now - effect.at;
         if (age < 0 || age > 850) continue;
         const t = age / 850;
         ctx.save();
@@ -321,6 +347,16 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       for (const room of ROOMS) {
         ctx.fillStyle = room.kind === 'meeting' ? '#3b968f' : '#30586c';
         ctx.fillRect(ox + room.x * scale, oy + room.y * scale, room.w * scale, room.h * scale);
+      }
+      for (const station of STATIONS) {
+        if (!g.tasks.includes(station.id) || g.completedTasks.includes(station.id)) continue;
+        ctx.fillStyle = '#8effd7'; ctx.beginPath(); ctx.arc(ox + station.x * scale, oy + station.y * scale, 2.7, 0, Math.PI * 2); ctx.fill();
+      }
+      if (g.sabotage === 'reactor') for (const point of REACTOR_FIXES) {
+        ctx.fillStyle = '#ff727d'; ctx.beginPath(); ctx.arc(ox + point.x * scale, oy + point.y * scale, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (g.sabotage === 'lights') {
+        const point = STATIONS[0]; ctx.fillStyle = '#ff727d'; ctx.beginPath(); ctx.arc(ox + point.x * scale, oy + point.y * scale, 4, 0, Math.PI * 2); ctx.fill();
       }
       if (me) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ox + me.x * scale, oy + me.y * scale, 3.5, 0, Math.PI * 2); ctx.fill(); }
       frame = requestAnimationFrame(draw);

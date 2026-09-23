@@ -4,10 +4,10 @@ Game suy luận xã hội 2D, chơi 4–10 người qua trình duyệt desktop. 
 
 ## Có thể chơi gì?
 
-- Phe phi hành đoàn: làm 5 nhiệm vụ, báo cáo xác, họp và bỏ phiếu tìm kẻ phá hoại. Ma vẫn có thể làm nhiệm vụ.
+- Phe phi hành đoàn: làm 8 nhiệm vụ, báo cáo xác, họp và bỏ phiếu tìm kẻ phá hoại. Ma vẫn có thể làm nhiệm vụ.
 - Phe phá hoại: hạ gục, dùng lỗ thông hơi, giả làm nhiệm vụ, tắt đèn, khóa cửa hoặc kích hoạt lò phản ứng.
 - Thắng bằng nhiệm vụ, loại hết kẻ phá hoại, đạt thế cân bằng quân số hoặc để lò phản ứng hết giờ.
-- Phòng có host, chơi lại, kết nối lại trong 60 giây và chat trong họp. Vai chỉ được gửi riêng cho người chơi tương ứng.
+- Phòng có host, ba preset nhịp chơi, chơi lại, kết nối lại trong 60 giây và chat trong họp. Vai chỉ được gửi riêng cho người chơi tương ứng.
 
 ## Chạy trên máy
 
@@ -28,7 +28,7 @@ Truy cập `http://localhost:5173`. Mặc định frontend kết nối Worker �
 
 Điều khiển: **WASD** hoặc phím mũi tên để di chuyển, **E** tương tác, **Q** hạ gục, **V** đi thông hơi. Các hành động cũng có nút trong bảng bên phải.
 
-Tàu hiện có 11 khu vực và camera theo người chơi. Trước khi deploy, chạy `node scripts/check-map.mjs` để kiểm tra đường đi tới các trạm. Khi Worker đang chạy, dùng `node scripts/smoke.mjs --task --quick` để thử nhiệm vụ quét, `node scripts/smoke.mjs --wire --quick` để thử nhiệm vụ nối dây và `node scripts/smoke.mjs --kill` để thử hạ gục. Các bước nâng cấp và tiêu chí nghiệm thu nằm trong `UPGRADE_PLAN.md`.
+Tàu hiện có 16 khu vực và camera theo người chơi. Trước khi deploy, chạy `node scripts/check-map.mjs` để kiểm tra đường đi tới các trạm. Khi Worker đang chạy, dùng `node scripts/smoke.mjs --task --quick` để thử nhiệm vụ quét, `node scripts/smoke.mjs --wire --quick` để thử nhiệm vụ nối dây và `node scripts/smoke.mjs --kill` để thử hạ gục. `node scripts/check-new-tasks.mjs` kiểm tra ba nhiệm vụ mới; `node scripts/check-ten-players.mjs` thử phòng đủ 10 người. Kế hoạch nâng cấp dài hạn nằm trong `PRO_MAX_PLAN.md`.
 
 ## Deploy miễn phí
 

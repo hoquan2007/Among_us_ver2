@@ -1,9 +1,9 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  COLORS, DOORS, EMERGENCY, INTERACT_RANGE, KILL_RANGE, MAP, REACTOR_FIXES, SPEED,
+  COLORS, DOORS, EMERGENCY, INTERACT_RANGE, KILL_RANGE, MAP, PRESETS, PROTOCOL_VERSION, REACTOR_FIXES, SPEED,
   STATIONS, VENTS, collides, distance, hitsRect,
   type Body, type ChatMessage, type ClientMessage, type KillEffect, type MeetingStage,
-  type Phase, type Role, type Sabotage, type ServerMessage, type Snapshot
+  type Phase, type Preset, type Role, type Sabotage, type ServerMessage, type Snapshot
 } from '../../../packages/protocol/src/index';
 
 interface Env { ROOMS: DurableObjectNamespace<GameRoom>; WEB_ORIGIN: string; }
@@ -11,6 +11,7 @@ interface Player {
   id: string; token: string; name: string; color: string; x: number; y: number;
   alive: boolean; connected: boolean; disconnectedAt: number; role: Role | null;
   tasks: string[]; completedTasks: string[]; taskStarted: Record<string, number>;
+  taskSteps: Record<string, number[]>;
   killReadyAt: number; sabotageReadyAt: number; emergencyUsed: number;
   lastMoveAt: number; lastMessageAt: number; votes: string | null | undefined;
 }
@@ -19,7 +20,7 @@ interface Meeting {
   ejected: string | null; skipped: boolean; endVotes: string[];
 }
 interface Game {
-  code: string; createdAt: number; phase: Phase; host: string;
+  code: string; createdAt: number; phase: Phase; preset: Preset; host: string;
   players: Player[]; bodies: Body[]; kills?: KillEffect[]; sabotage: Sabotage; reactorDeadline: number;
   reactorFixed: number[]; reactorFixers: Record<number, { id: string; at: number }>; lightsFixed: boolean; doorsUntil: number;
   meeting: Meeting | null; chat: ChatMessage[]; winner: Role | null; winnerReason: string;
@@ -34,6 +35,14 @@ const roomCode = () => {
 };
 const cleanName = (input: string) => input.trim().replace(/[\x00-\x1f<>]/g, '').slice(0, 16) || 'Phi hành gia';
 const REACTOR_WINDOW = 20_000;
+const SPAWNS = [
+  [1340, 850], [1460, 850], [1340, 970], [1460, 970], [1240, 850],
+  [1560, 850], [1240, 970], [1560, 970], [1340, 1040], [1460, 1040]
+] as const;
+const TASK_SEQUENCE: Record<string, number[]> = {
+  fuel: Array(8).fill(1), calibrate: [0, 1, 2], valves: [2, 0, 1],
+  cargo: [1, 2, 0, 3], frequency: [73]
+};
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -77,7 +86,7 @@ export class GameRoom extends DurableObject<Env> {
     if (url.pathname === '/init' && request.method === 'POST') {
       if (this.game) return json({ error: 'exists' }, 409);
       const code = url.searchParams.get('code') || '';
-      this.game = { code, createdAt: Date.now(), phase: 'lobby', host: '', players: [], bodies: [], kills: [], sabotage: null,
+      this.game = { code, createdAt: Date.now(), phase: 'lobby', preset: 'standard', host: '', players: [], bodies: [], kills: [], sabotage: null,
         reactorDeadline: 0, reactorFixed: [], reactorFixers: {}, lightsFixed: true, doorsUntil: 0,
         meeting: null, chat: [], winner: null, winnerReason: '' };
       await this.persist();
@@ -96,7 +105,7 @@ export class GameRoom extends DurableObject<Env> {
       const id = crypto.randomUUID();
       const color = COLORS.find(c => !game.players.some(p => p.color === c)) || COLORS[game.players.length % COLORS.length];
       player = { id, token: crypto.randomUUID(), name, color, x: MAP.width / 2, y: MAP.height / 2,
-        alive: true, connected: true, disconnectedAt: 0, role: null, tasks: [], completedTasks: [], taskStarted: {},
+        alive: true, connected: true, disconnectedAt: 0, role: null, tasks: [], completedTasks: [], taskStarted: {}, taskSteps: {},
         killReadyAt: 0, sabotageReadyAt: 0, emergencyUsed: 0, lastMoveAt: Date.now(), lastMessageAt: 0, votes: undefined };
       game.players.push(player);
       if (!game.host) game.host = id;
@@ -128,7 +137,7 @@ export class GameRoom extends DurableObject<Env> {
     try { message = JSON.parse(data) as ClientMessage; } catch { return; }
     if (!message || typeof message.type !== 'string') return;
     const now = Date.now();
-    if (now - player.lastMessageAt < 20 && message.type !== 'taskStart' && message.type !== 'taskComplete') return;
+    if (now - player.lastMessageAt < 20 && !['taskStart', 'taskStep', 'taskComplete'].includes(message.type)) return;
     player.lastMessageAt = now;
     const error = await this.handle(player, message, now);
     if (error) this.send(ws, { type: 'error', message: error });
@@ -182,6 +191,9 @@ export class GameRoom extends DurableObject<Env> {
       if (g.phase !== 'lobby' || p.id !== g.host || g.players.filter(x => x.connected).length < 4) return 'Cần host và ít nhất 4 người đang kết nối.';
       g.players = g.players.filter(x => x.connected);
       this.startGame(now);
+    } else if (m.type === 'preset') {
+      if (g.phase !== 'lobby' || p.id !== g.host || !Object.prototype.hasOwnProperty.call(PRESETS, m.value)) return;
+      g.preset = m.value;
     } else if (m.type === 'restart') {
       if (g.phase !== 'ended' || p.id !== g.host) return 'Chỉ host có thể chơi lại.';
       g.phase = 'lobby'; g.bodies = []; g.sabotage = null; g.meeting = null; g.chat = []; g.winner = null; g.winnerReason = '';
@@ -206,13 +218,32 @@ export class GameRoom extends DurableObject<Env> {
       if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return 'Nhiệm vụ không khả dụng.';
       const station = STATIONS.find(s => s.id === m.id);
       if (!station || distance(p, station) > INTERACT_RANGE) return 'Hãy đứng gần trạm nhiệm vụ.';
-      p.taskStarted[m.id] ??= now;
+      p.taskStarted[m.id] = now;
+      p.taskSteps ??= {};
+      p.taskSteps[m.id] = [];
+    } else if (m.type === 'taskStep') {
+      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id) || !p.taskStarted[m.id]) return;
+      const station = STATIONS.find(s => s.id === m.id);
+      if (!station || distance(p, station) > INTERACT_RANGE || !Number.isInteger(m.step)) return;
+      p.taskSteps ??= {};
+      const steps = p.taskSteps[m.id] ??= [];
+      if (m.id === 'wires') {
+        if (m.step < 0 || m.step > 2 || steps.includes(m.step)) return;
+      } else {
+        const expected = TASK_SEQUENCE[m.id];
+        if (!expected || expected[steps.length] !== m.step) return;
+      }
+      steps.push(m.step);
     } else if (m.type === 'taskComplete') {
       if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return;
       const station = STATIONS.find(s => s.id === m.id);
-      if (!station || distance(p, station) > INTERACT_RANGE || now - (p.taskStarted[m.id] || 0) < 1800) return 'Hãy hoàn thành nhiệm vụ tại trạm.';
+      const minimum = m.id === 'scan' || m.id === 'upload' ? 3000 : 1800;
+      const expected = m.id === 'wires' ? 3 : TASK_SEQUENCE[m.id]?.length || 0;
+      if (!station || distance(p, station) > INTERACT_RANGE || now - (p.taskStarted[m.id] || 0) < minimum ||
+        (p.taskSteps?.[m.id]?.length || 0) < expected) return 'Hãy hoàn thành nhiệm vụ tại trạm.';
       p.completedTasks.push(m.id);
       delete p.taskStarted[m.id];
+      delete p.taskSteps[m.id];
       this.checkWin();
     } else if (m.type === 'kill') {
       if (g.phase !== 'playing' || p.role !== 'impostor' || !p.alive || now < p.killReadyAt) return;
@@ -222,7 +253,7 @@ export class GameRoom extends DurableObject<Env> {
       g.bodies.push({ id: crypto.randomUUID(), playerId: target.id, x: target.x, y: target.y, color: target.color });
       g.kills ??= [];
       g.kills = [...g.kills.filter(effect => now - effect.at < 1800), { id: crypto.randomUUID(), x: target.x, y: target.y, actor: p.id, target: target.id, at: now }];
-      p.killReadyAt = now + 30_000;
+      p.killReadyAt = now + PRESETS[g.preset || 'standard'].killCooldown * 1000;
       this.checkWin();
     } else if (m.type === 'report') {
       if (g.phase !== 'playing' || !p.alive) return;
@@ -265,7 +296,7 @@ export class GameRoom extends DurableObject<Env> {
       g.reactorFixers = {};
       g.reactorDeadline = m.kind === 'reactor' ? now + 90_000 : 0;
       g.doorsUntil = m.kind === 'doors' ? now + 12_000 : 0;
-      for (const x of g.players.filter(x => x.role === 'impostor')) x.sabotageReadyAt = now + 35_000;
+      for (const x of g.players.filter(x => x.role === 'impostor')) x.sabotageReadyAt = now + PRESETS[g.preset || 'standard'].sabotageCooldown * 1000;
       if (m.kind === 'doors') await this.ctx.storage.setAlarm(g.doorsUntil);
     } else if (m.type === 'fix') {
       if (g.phase !== 'playing' || !p.alive || p.role !== 'crew') return;
@@ -287,6 +318,7 @@ export class GameRoom extends DurableObject<Env> {
       p.x = VENTS[vent.to].x; p.y = VENTS[vent.to].y;
     } else return;
     await this.persist();
+    if (m.type === 'taskStart' || m.type === 'taskStep') return;
     await this.schedule();
     this.broadcast(true);
   }
@@ -304,9 +336,9 @@ export class GameRoom extends DurableObject<Env> {
     g.winner = null; g.winnerReason = ''; g.lightsFixed = true; g.reactorDeadline = 0;
     g.players.forEach((p, i) => {
       p.role = impostors.has(p.id) ? 'impostor' : 'crew'; p.alive = true;
-      p.x = 1340 + i % 5 * 30; p.y = 850 + Math.floor(i / 5) * 100;
-      p.tasks = p.role === 'crew' ? STATIONS.map(s => s.id) : [];
-      p.completedTasks = []; p.taskStarted = {}; p.killReadyAt = now + 20_000;
+      p.x = SPAWNS[i][0]; p.y = SPAWNS[i][1];
+      p.tasks = p.role === 'crew' ? STATIONS.slice(0, PRESETS[g.preset || 'standard'].tasks).map(s => s.id) : [];
+      p.completedTasks = []; p.taskStarted = {}; p.taskSteps = {}; p.killReadyAt = now + 20_000;
       p.sabotageReadyAt = now + 15_000; p.emergencyUsed = 0; p.lastMoveAt = now;
     });
   }
@@ -315,16 +347,16 @@ export class GameRoom extends DurableObject<Env> {
     const g = this.game!;
     g.phase = 'meeting'; g.sabotage = null; g.reactorDeadline = 0; g.doorsUntil = 0;
     g.bodies = [];
-    g.meeting = { stage: 'discussion', endsAt: now + 45_000, reporter: p.id, reason, ejected: null, skipped: false, endVotes: [] };
+    g.meeting = { stage: 'discussion', endsAt: now + PRESETS[g.preset || 'standard'].discussion * 1000, reporter: p.id, reason, ejected: null, skipped: false, endVotes: [] };
     g.chat = [{ id: crypto.randomUUID(), name: 'Hệ thống', text: `${p.name}: ${reason}`, at: now, ghost: false }];
-    g.players.forEach(x => { x.votes = undefined; x.x = 1340 + g.players.indexOf(x) % 5 * 30; x.y = 850 + Math.floor(g.players.indexOf(x) / 5) * 100; });
+    g.players.forEach((x, i) => { x.votes = undefined; x.x = SPAWNS[i][0]; x.y = SPAWNS[i][1]; });
   }
 
   private advanceMeeting(now: number): void {
     const g = this.game!;
     const meeting = g.meeting;
     if (!meeting) return;
-    if (meeting.stage === 'discussion') { meeting.stage = 'voting'; meeting.endsAt = now + 30_000; return; }
+    if (meeting.stage === 'discussion') { meeting.stage = 'voting'; meeting.endsAt = now + PRESETS[g.preset || 'standard'].voting * 1000; return; }
     if (meeting.stage === 'voting') {
       const votes = new Map<string, number>();
       for (const p of g.players.filter(x => x.alive && x.votes !== undefined)) {
@@ -386,7 +418,7 @@ export class GameRoom extends DurableObject<Env> {
     const totalTasks = crew.reduce((n, x) => n + x.tasks.length, 0);
     const doneTasks = crew.reduce((n, x) => n + x.completedTasks.length, 0);
     return {
-      type: 'snapshot', code: g.code, phase: g.phase, me: p.id, host: g.host,
+      type: 'snapshot', protocolVersion: PROTOCOL_VERSION, code: g.code, phase: g.phase, preset: g.preset || 'standard', me: p.id, host: g.host,
       players: g.players.filter(x => x.id === p.id || (visible(x) && (g.phase !== 'playing' || x.alive || !p.alive))).map(x => ({ id: x.id, name: x.name, color: x.color, x: x.x, y: x.y, alive: x.alive, connected: x.connected })),
       role: p.role, allies: p.role === 'impostor' || g.phase === 'ended' ? g.players.filter(x => x.role === 'impostor').map(x => x.id) : [],
       tasks: p.tasks, completedTasks: p.completedTasks, taskProgress: totalTasks ? doneTasks / totalTasks : 0,

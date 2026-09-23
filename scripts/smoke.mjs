@@ -89,7 +89,17 @@ if (taskMode) {
   crew.socket.send(JSON.stringify({ type: 'move', dx: 0, dy: 0 }));
   crew.socket.send(JSON.stringify({ type: 'taskStart', id: taskId }));
   await waitFor(() => crew.readyTasks.has(taskId));
-  await delay(1950);
+  if (wireMode) {
+    await delay(1950);
+    crew.socket.send(JSON.stringify({ type: 'taskComplete', id: taskId }));
+    await delay(160);
+    assert.ok(!latest(crew).completedTasks.includes(taskId), 'Server must reject unplayed puzzle');
+    for (const step of [0, 1, 2]) {
+      crew.socket.send(JSON.stringify({ type: 'taskStep', id: taskId, step }));
+      await delay(75);
+    }
+  }
+  await delay(wireMode ? 100 : 3200);
   crew.socket.send(JSON.stringify({ type: 'taskComplete', id: taskId }));
   await waitFor(() => latest(crew).completedTasks.includes(taskId));
   assert.ok(latest(crew).taskProgress > 0);

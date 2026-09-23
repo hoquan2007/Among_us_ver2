@@ -1,8 +1,15 @@
 export const MAP = { width: 2800, height: 1800 } as const;
+export const PROTOCOL_VERSION = 2;
 export const VIEW = { width: 1080, height: 660 } as const;
 export const SPEED = 205;
 export const INTERACT_RANGE = 90;
 export const KILL_RANGE = 76;
+export const PRESETS = {
+  quick: { name: 'NHANH', tasks: 5, discussion: 25, voting: 20, killCooldown: 25, sabotageCooldown: 28 },
+  standard: { name: 'CHUẨN', tasks: 8, discussion: 45, voting: 30, killCooldown: 30, sabotageCooldown: 35 },
+  tense: { name: 'CĂNG THẲNG', tasks: 8, discussion: 60, voting: 40, killCooldown: 35, sabotageCooldown: 40 }
+} as const;
+export type Preset = keyof typeof PRESETS;
 export const COLORS = ['#ff687a', '#58b8ff', '#f6c65b', '#b28cff', '#60d5a0', '#f28ad1', '#f7f7f2', '#e38955', '#7fd0d7', '#a3b457'];
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -53,7 +60,10 @@ export const STATIONS = [
   { id: 'fuel', name: 'Nạp nhiên liệu', room: 'KHO NHIÊN LIỆU', x: 255, y: 1160, icon: '◈' },
   { id: 'scan', name: 'Quét sinh học', room: 'Y TẾ', x: 1400, y: 210, icon: '✚' },
   { id: 'upload', name: 'Tải dữ liệu', room: 'DỮ LIỆU', x: 2545, y: 210, icon: '▣' },
-  { id: 'calibrate', name: 'Hiệu chỉnh lái', room: 'ĐIỀU KHIỂN', x: 2545, y: 1160, icon: '◎' }
+  { id: 'calibrate', name: 'Hiệu chỉnh lái', room: 'ĐIỀU KHIỂN', x: 2545, y: 1160, icon: '◎' },
+  { id: 'valves', name: 'Cân bằng oxy', room: 'KHÔNG KHÍ', x: 930, y: 1600, icon: '◌' },
+  { id: 'cargo', name: 'Phân loại hàng', room: 'KHO HÀNG', x: 255, y: 1590, icon: '▥' },
+  { id: 'frequency', name: 'Dò tần số', room: 'LIÊN LẠC', x: 1870, y: 190, icon: '⌁' }
 ] as const;
 export const VENTS = [
   { x: 365, y: 290, to: 1 }, { x: 1400, y: 1590, to: 0 },
@@ -71,7 +81,7 @@ export interface Body { id: string; playerId: string; x: number; y: number; colo
 export interface KillEffect { id: string; x: number; y: number; actor: string; target: string; at: number; }
 export interface ChatMessage { id: string; name: string; text: string; at: number; ghost: boolean; }
 export interface Snapshot {
-  type: 'snapshot'; code: string; phase: Phase; me: string; host: string; players: PublicPlayer[];
+  type: 'snapshot'; protocolVersion: number; code: string; phase: Phase; preset: Preset; me: string; host: string; players: PublicPlayer[];
   role: Role | null; allies: string[]; tasks: string[]; completedTasks: string[]; taskProgress: number;
   bodies: Body[]; kills: KillEffect[]; sabotage: Sabotage; reactorDeadline: number; reactorFixed: number[]; reactorWindowEndsAt: number; lightsFixed: boolean;
   doorsUntil: number; sabotageReadyAt: number; killReadyAt: number; emergencyUsed: number;
@@ -79,7 +89,8 @@ export interface Snapshot {
   chat: ChatMessage[]; winner: Role | null; winnerReason: string; serverTime: number;
 }
 export type ClientMessage =
-  | { type: 'move'; dx: number; dy: number } | { type: 'start' } | { type: 'taskStart'; id: string }
+  | { type: 'move'; dx: number; dy: number } | { type: 'start' } | { type: 'preset'; value: Preset } | { type: 'taskStart'; id: string }
+  | { type: 'taskStep'; id: string; step: number }
   | { type: 'taskComplete'; id: string } | { type: 'kill'; target: string } | { type: 'report'; body: string }
   | { type: 'emergency' } | { type: 'vote'; target: string | null } | { type: 'endMeeting' } | { type: 'chat'; text: string }
   | { type: 'sabotage'; kind: Exclude<Sabotage, null> } | { type: 'fix'; point?: number }
