@@ -4,6 +4,90 @@ import { DOORS, EMERGENCY, MAP, REACTOR_FIXES, ROOMS, SPEED, STATIONS, VENTS, VI
 const accent = '#78e7d7';
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
 
+function roomDetails(ctx: CanvasRenderingContext2D, room: (typeof ROOMS)[number], time: number) {
+  const { x, y, w, h, name } = room;
+  ctx.save();
+  ctx.fillStyle = '#67c6c015';
+  for (let px = x + 25; px < x + w - 10; px += 64) {
+    for (let py = y + 30; py < y + h - 10; py += 64) ctx.fillRect(px, py, 2, 2);
+  }
+  ctx.strokeStyle = '#a1e7df1b'; ctx.lineWidth = 2;
+  ctx.strokeRect(x + 24, y + 25, w - 48, h - 50);
+  const box = (bx: number, by: number, bw: number, bh: number, color = '#254b5b') => {
+    ctx.fillStyle = '#07182488'; ctx.fillRect(bx + 5, by + 6, bw, bh);
+    ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
+    ctx.strokeStyle = '#91d7d650'; ctx.lineWidth = 2; ctx.stroke();
+  };
+  const screen = (bx: number, by: number, bw: number, bh: number, color = '#6bdac7') => {
+    box(bx, by, bw, bh, '#163647');
+    ctx.fillStyle = color + '55'; ctx.fillRect(bx + 7, by + 7, bw - 14, bh - 14);
+    ctx.fillStyle = color; ctx.fillRect(bx + 12, by + 15, Math.max(9, bw * .37), 3);
+    ctx.fillRect(bx + 12, by + 24, Math.max(10, bw * .52), 2);
+  };
+  if (name === 'PHÒNG HỌP') {
+    ctx.fillStyle = '#0d2d3d'; ctx.beginPath(); ctx.ellipse(EMERGENCY.x, EMERGENCY.y, 197, 119, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#79d9d344'; ctx.lineWidth = 4; ctx.stroke();
+    for (let i = 0; i < 10; i++) {
+      const a = i * Math.PI * 2 / 10;
+      box(EMERGENCY.x + Math.cos(a) * 181 - 15, EMERGENCY.y + Math.sin(a) * 99 - 11, 30, 22, '#356676');
+    }
+    screen(x + 36, y + 65, 90, 54); screen(x + w - 126, y + 65, 90, 54);
+    ctx.fillStyle = '#315e6e'; ctx.fillRect(x + 70, y + h - 90, w - 140, 8);
+  } else if (name === 'PHÒNG ĐIỆN') {
+    for (let i = 0; i < 4; i++) {
+      screen(x + 31 + i * 92, y + 68, 72, 66, ['#f3be72', '#86e9d4', '#ef7d90', '#8caafa'][i]);
+      ctx.strokeStyle = ['#f3be72', '#86e9d4', '#ef7d90', '#8caafa'][i] + '75';
+      ctx.beginPath(); ctx.moveTo(x + 67 + i * 92, y + 134); ctx.bezierCurveTo(x + 55 + i * 92, y + 175, x + 85 + i * 92, y + 205, x + 67 + i * 92, y + 233); ctx.stroke();
+    }
+  } else if (name === 'BẢO AN') {
+    for (let i = 0; i < 3; i++) screen(x + 27 + i * 70, y + 63, 58, 55, '#8ac5ef');
+    box(x + 75, y + 145, 110, 35);
+  } else if (name === 'Y TẾ') {
+    box(x + 36, y + 90, 90, 149, '#3b6570'); box(x + w - 126, y + 90, 90, 149, '#3b6570');
+    ctx.fillStyle = '#a0e8dd'; ctx.fillRect(x + 62, y + 110, 37, 18); ctx.fillRect(x + w - 100, y + 110, 37, 18);
+    ctx.fillStyle = '#b3ffff66'; ctx.fillRect(x + 166, y + 96, w - 332, 7);
+  } else if (name === 'LIÊN LẠC') {
+    ctx.strokeStyle = '#77ded099'; ctx.lineWidth = 3;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x + w / 2, y + 150, 28 + i * 25, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); }
+    screen(x + 29, y + 70, 70, 52); screen(x + w - 99, y + 70, 70, 52);
+  } else if (name === 'DỮ LIỆU') {
+    for (let i = 0; i < 4; i++) {
+      box(x + 36 + i * 92, y + 68, 70, 106, '#183b4d');
+      for (let j = 0; j < 4; j++) { ctx.fillStyle = j === (i + Math.floor(time / 700)) % 4 ? '#8cf5dc' : '#4d9aa0'; ctx.fillRect(x + 49 + i * 92, y + 85 + j * 19, 44, 5); }
+    }
+  } else if (name === 'LÒ PHẢN ỨNG') {
+    for (const offset of [-115, 115]) {
+      ctx.fillStyle = '#2775853d'; ctx.beginPath(); ctx.arc(x + w / 2 + offset, y + h / 2, 64, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#88e2dc80'; ctx.lineWidth = 5; ctx.stroke();
+      ctx.fillStyle = '#96e9e16b'; ctx.beginPath(); ctx.arc(x + w / 2 + offset, y + h / 2, 28 + Math.sin(time * .003) * 3, 0, Math.PI * 2); ctx.fill();
+    }
+    box(x + 143, y + 78, 134, 45);
+  } else if (name === 'QUAN SÁT') {
+    box(x + 40, y + 65, w - 80, 87, '#071624');
+    ctx.fillStyle = '#f0fff2'; for (let i = 0; i < 17; i++) ctx.fillRect(x + 55 + (i * 47) % (w - 105), y + 78 + (i * 31) % 55, i % 4 === 0 ? 3 : 2, 2);
+    screen(x + 135, y + 203, 150, 43);
+  } else if (name === 'KHO NHIÊN LIỆU') {
+    for (let i = 0; i < 3; i++) {
+      box(x + 42 + i * 122, y + 73, 88, 95, '#64624a');
+      ctx.fillStyle = '#f2cf7b88'; ctx.fillRect(x + 55 + i * 122, y + 132, 62, 11);
+    }
+  } else if (name === 'ĐỘNG CƠ') {
+    for (let i = 0; i < 2; i++) {
+      const cx = x + 130 + i * 180, cy = y + 170;
+      ctx.fillStyle = '#295366'; ctx.beginPath(); ctx.arc(cx, cy, 66, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#8edac5'; ctx.lineWidth = 5; ctx.stroke();
+      for (let j = 0; j < 5; j++) {
+        const a = time * .0006 + j * Math.PI * 2 / 5;
+        ctx.strokeStyle = '#80bfcd'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * 48, cy + Math.sin(a) * 48); ctx.stroke();
+      }
+    }
+  } else if (name === 'ĐIỀU KHIỂN') {
+    for (let i = 0; i < 3; i++) screen(x + 37 + i * 121, y + 67, 100, 63, '#8bbbea');
+    box(x + 82, y + 211, w - 164, 43, '#36566a');
+  }
+  ctx.restore();
+}
+
 function astronaut(ctx: CanvasRenderingContext2D, p: PublicPlayer, x: number, y: number, moving: boolean, phase: number, mine: boolean, ally: boolean, dying: boolean) {
   const stride = moving ? Math.sin(phase) * 5 : 0;
   const bob = moving ? Math.abs(Math.sin(phase)) * 3 : Math.sin(phase * .2) * 1.2;
@@ -29,14 +113,11 @@ function astronaut(ctx: CanvasRenderingContext2D, p: PublicPlayer, x: number, y:
   ctx.beginPath(); ctx.roundRect(x - 12, y - 22 - bob, 30, 20, 9); ctx.fill();
   ctx.strokeStyle = '#0e334b'; ctx.lineWidth = 2.5; ctx.stroke();
   ctx.fillStyle = '#ffffff92'; ctx.beginPath(); ctx.ellipse(x - 3, y - 17 - bob, 8, 3, -.2, 0, Math.PI * 2); ctx.fill();
-  if (mine || ally) {
-    ctx.strokeStyle = mine ? '#fff' : '#ff8a9a'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(x, y - 8 - bob, 24, 29, 0, 0, Math.PI * 2); ctx.stroke();
-  }
   ctx.globalAlpha = 1;
-  ctx.fillStyle = '#081524c9'; ctx.beginPath(); ctx.roundRect(x - 42, y - 61 - bob, 84, 20, 8); ctx.fill();
-  ctx.fillStyle = '#edfaff'; ctx.textAlign = 'center'; ctx.font = '700 12px system-ui';
-  ctx.fillText(p.name.slice(0, 12) + (ally ? ' ◆' : ''), x, y - 47 - bob);
+  ctx.fillStyle = mine ? '#c8fff0' : ally ? '#653947' : '#081524c9';
+  ctx.beginPath(); ctx.roundRect(x - 46, y - 61 - bob, 92, 20, 8); ctx.fill();
+  ctx.fillStyle = mine ? '#123746' : '#edfaff'; ctx.textAlign = 'center'; ctx.font = '700 12px system-ui';
+  ctx.fillText((mine ? '▸ ' : '') + p.name.slice(0, 12) + (ally ? ' ◆' : ''), x, y - 47 - bob);
   ctx.restore();
 }
 
@@ -91,9 +172,17 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       ctx.fillStyle = '#07121e'; ctx.fillRect(0, 0, VIEW.width, VIEW.height);
       ctx.save(); ctx.translate(-camera.x, -camera.y);
       ctx.fillStyle = '#0c2030'; ctx.fillRect(0, 0, MAP.width, MAP.height);
+      ctx.fillStyle = '#123346';
+      ctx.fillRect(470, 625, 280, 100); ctx.fillRect(1350, 625, 280, 100);
+      ctx.fillRect(1000, 350, 100, 125); ctx.fillRect(1000, 875, 100, 125);
       ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 1;
       for (let x = 0; x <= MAP.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, MAP.height); ctx.stroke(); }
       for (let y = 0; y <= MAP.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(MAP.width, y); ctx.stroke(); }
+      ctx.setLineDash([23, 19]); ctx.strokeStyle = '#7ec7c32b'; ctx.lineWidth = 4;
+      for (const [ax, ay, bx, by] of [[460, 675, 750, 675], [1350, 675, 1640, 675], [1050, 340, 1050, 475], [1050, 875, 1050, 1010]]) {
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      }
+      ctx.setLineDash([]);
       ctx.strokeStyle = '#58a8bc22'; ctx.lineWidth = 2;
       ctx.strokeRect(23, 23, MAP.width - 46, MAP.height - 46);
       for (const room of ROOMS) {
@@ -104,6 +193,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         for (let x = room.x + 35; x < room.x + room.w - 25; x += 72) {
           for (let y = room.y + 40; y < room.y + room.h - 25; y += 72) ctx.fillRect(x, y, 3, 3);
         }
+        roomDetails(ctx, room, time);
         ctx.fillStyle = meeting ? '#a5f6df' : '#81aabe';
         ctx.font = '700 14px system-ui'; ctx.textAlign = 'left';
         ctx.fillText(room.name, room.x + 30, room.y + 42);
@@ -118,8 +208,10 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         }
       }
       for (const wall of WALLS) {
+        ctx.fillStyle = '#07152199'; ctx.fillRect(wall.x + 5, wall.y + 6, wall.w, wall.h);
         ctx.fillStyle = '#32566a'; ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
         ctx.fillStyle = '#75b6bd88'; ctx.fillRect(wall.x, wall.y, wall.w, 3);
+        ctx.fillStyle = '#091d2b'; ctx.fillRect(wall.x + 5, wall.y + wall.h - 4, Math.max(0, wall.w - 10), 2);
       }
       if (g.sabotage === 'doors' && Date.now() < g.doorsUntil) {
         for (const door of DOORS) {

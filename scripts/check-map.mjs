@@ -15,7 +15,7 @@ for (let i = 0; i < queue.length; i++) {
     seen.add(key(nx, ny)); queue.push([nx, ny]);
   }
 }
-assert.equal(ROOMS.length, 7);
+assert.equal(ROOMS.length, 11);
 for (const point of [...STATIONS, ...VENTS, ...REACTOR_FIXES]) {
   assert.equal(collides(point.x, point.y), false, `Point is blocked: ${JSON.stringify(point)}`);
   assert.ok(queue.some(([x, y]) => distance({ x: x * cell, y: y * cell }, point) < 20), `Unreachable: ${JSON.stringify(point)}`);

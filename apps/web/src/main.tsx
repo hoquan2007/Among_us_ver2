@@ -15,11 +15,13 @@ function send(ws: WebSocket | null, message: ClientMessage) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
 }
 
-function TaskModal({ id, fake, onClose, onComplete }: { id: string; fake: boolean; onClose: () => void; onComplete: () => void }) {
+function TaskModal({ id, fake, ready, onClose, onComplete }: { id: string; fake: boolean; ready: boolean; onClose: () => void; onComplete: () => void }) {
   const station = STATIONS.find(s => s.id === id)!;
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [firstWire, setFirstWire] = useState<number | null>(null);
+  const [connectedWires, setConnectedWires] = useState<number[]>([]);
+  const [wireHint, setWireHint] = useState('Chọn một đầu dây ở cột trái.');
   const started = useRef(Date.now());
   const completion = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completed = useRef(false);
@@ -28,19 +30,35 @@ function TaskModal({ id, fake, onClose, onComplete }: { id: string; fake: boolea
     completed.current = true;
     completion.current = setTimeout(onComplete, Math.max(0, 1900 - (Date.now() - started.current)));
   };
+  useEffect(() => { if (ready) started.current = Date.now(); }, [ready]);
   useEffect(() => {
-    if (id !== 'scan' && id !== 'upload') return;
+    if (!ready || (id !== 'scan' && id !== 'upload')) return;
     const timer = setInterval(() => setProgress(value => Math.min(100, value + 4)), 120);
     return () => clearInterval(timer);
-  }, [id]);
+  }, [id, ready]);
   useEffect(() => { if (progress >= 100 && (id === 'scan' || id === 'upload')) finish(); }, [progress]);
   useEffect(() => () => { if (completion.current) clearTimeout(completion.current); }, []);
   const symbols = ['◆', '●', '▲'];
+  const wireColors = ['#ef7989', '#75e2dc', '#e9c76c'];
+  const wireNames = ['Đỏ', 'Xanh', 'Vàng'];
+  const selectWire = (n: number) => { setFirstWire(n); setWireHint(`Đã chọn dây ${wireNames[n]}. Tìm màu tương ứng ở cột phải.`); };
+  const connectWire = (n: number) => {
+    if (firstWire === null || completed.current) return;
+    if (firstWire !== n) { setWireHint('Sai màu, hãy chọn lại đầu dây bên trái.'); setFirstWire(null); return; }
+    const next = [...connectedWires, n];
+    setConnectedWires(next); setFirstWire(null);
+    setWireHint(next.length === 3 ? 'Đã nối đủ ba mạch. Đang xác nhận…' : 'Đúng rồi! Tiếp tục nối dây còn lại.');
+    if (next.length === 3) finish();
+  };
   return <div className="overlay"><section className="modal task-modal"><button className="close" onClick={onClose} aria-label="Đóng nhiệm vụ">×</button><div className="eyebrow">{fake ? 'GIẢ LÀM NHIỆM VỤ' : station.room}</div><h2>{station.name}</h2>
-    {id === 'wires' && <><p>Chọn dây bên trái, sau đó chọn đúng màu bên phải. Làm lần lượt từ trên xuống.</p><div className="wire-grid">{[0, 1, 2].map(n => <button key={`left-${n}`} disabled={n < step || completed.current} className={n < step ? 'done' : firstWire === n ? 'selected' : ''} style={{ borderColor: ['#ef7989', '#75e2dc', '#e9c76c'][n] }} onClick={() => setFirstWire(n)}>{['Đỏ', 'Xanh', 'Vàng'][n]}</button>)}{[2, 0, 1].map(n => <button key={`right-${n}`} disabled={n < step || completed.current} className={n < step ? 'done' : firstWire === n ? 'selected' : ''} style={{ borderColor: ['#ef7989', '#75e2dc', '#e9c76c'][n] }} onClick={() => { if (firstWire !== n || n !== step) { setFirstWire(null); return; } setFirstWire(null); if (step === 2) finish(); else setStep(step + 1); }}>{['Đỏ', 'Xanh', 'Vàng'][n]}</button>)}</div><div className="task-instruction">{step}/3 mạch đã nối</div></>}
-    {id === 'fuel' && <><p>Nhấn để nạp đầy bình nhiên liệu.</p><div className="task-gauge"><i style={{ width: `${step * 12.5}%` }} /></div><button className="task-control" disabled={completed.current} onClick={() => { if (step >= 7) finish(); setStep(Math.min(8, step + 1)); }}>NẠP NHIÊN LIỆU</button><div>{Math.round(step * 12.5)}%</div></>}
+    {!ready && !fake && <p className="task-instruction">Đang kết nối với trạm nhiệm vụ…</p>}
+    {id === 'wires' && <><p>Chọn một dây bên trái, rồi ghép với màu giống nó ở bên phải.</p><div className="wire-grid">
+      <div className="wire-column"><span className="wire-heading">ĐẦU NGUỒN</span>{[0, 1, 2].map(n => <button key={`left-${n}`} disabled={!ready || connectedWires.includes(n) || completed.current} className={connectedWires.includes(n) ? 'done' : firstWire === n ? 'selected' : ''} style={{ borderColor: wireColors[n] }} onClick={() => selectWire(n)}><i style={{ background: wireColors[n] }} />{wireNames[n]}</button>)}</div>
+      <div className="wire-column"><span className="wire-heading">ĐẦU NHẬN</span>{[2, 0, 1].map(n => <button key={`right-${n}`} disabled={!ready || connectedWires.includes(n) || completed.current} className={connectedWires.includes(n) ? 'done' : ''} style={{ borderColor: wireColors[n] }} onClick={() => connectWire(n)}><i style={{ background: wireColors[n] }} />{wireNames[n]}</button>)}</div>
+    </div><div className="task-instruction" role="status">{connectedWires.length}/3 mạch đã nối · {wireHint}</div></>}
+    {id === 'fuel' && <><p>Nhấn để nạp đầy bình nhiên liệu.</p><div className="task-gauge"><i style={{ width: `${step * 12.5}%` }} /></div><button className="task-control" disabled={!ready || completed.current} onClick={() => { if (step >= 7) finish(); setStep(Math.min(8, step + 1)); }}>NẠP NHIÊN LIỆU</button><div>{Math.round(step * 12.5)}%</div></>}
     {(id === 'scan' || id === 'upload') && <><p>{id === 'scan' ? 'Đang quét mẫu sinh học…' : 'Đang tải dữ liệu về tàu…'}</p><div className="task-gauge"><i style={{ width: `${progress}%` }} /></div><strong>{progress}%</strong></>}
-    {id === 'calibrate' && <><p>Nhấn các ký hiệu theo thứ tự.</p><div className="sequence">{symbols.map((symbol, i) => <span key={i} className={i < step ? 'done' : i === step ? 'current' : ''}>{symbol}</span>)}</div><div className="symbol-buttons">{[...symbols].reverse().map(symbol => <button key={symbol} onClick={() => { if (symbol !== symbols[step]) { setStep(0); return; } if (step === 2) finish(); else setStep(step + 1); }}>{symbol}</button>)}</div></>}
+    {id === 'calibrate' && <><p>Nhấn các ký hiệu theo thứ tự.</p><div className="sequence">{symbols.map((symbol, i) => <span key={i} className={i < step ? 'done' : i === step ? 'current' : ''}>{symbol}</span>)}</div><div className="symbol-buttons">{[...symbols].reverse().map(symbol => <button key={symbol} disabled={!ready || completed.current} onClick={() => { if (symbol !== symbols[step]) { setStep(0); return; } if (step === 2) finish(); else setStep(step + 1); }}>{symbol}</button>)}</div></>}
     <small>{completed.current ? 'Đang xác nhận…' : fake ? 'Giữ bí mật vai trò của bạn.' : 'Ở gần trạm cho đến khi hoàn thành.'}</small>
   </section></div>;
 }
@@ -54,6 +72,7 @@ function App() {
   const [status, setStatus] = useState('');
   const [chatText, setChatText] = useState('');
   const [task, setTask] = useState<string | null>(null);
+  const [taskReady, setTaskReady] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [, setClock] = useState(0);
   const socket = useRef<WebSocket | null>(null);
@@ -88,6 +107,7 @@ function App() {
       try { message = JSON.parse(event.data); } catch { return; }
       if (message.type === 'welcome') sessionStorage.setItem(`starship-token-${normalized}`, message.token);
       else if (message.type === 'snapshot') { setSnapshot(message); setError(''); }
+      else if (message.type === 'taskReady' && taskRef.current === message.id) setTaskReady(message.id);
       else if (message.type === 'error') { setError(message.message); if (taskRef.current) setTask(null); }
     };
     ws.onerror = () => setStatus('Mất kết nối');
@@ -131,6 +151,11 @@ function App() {
   useEffect(() => {
     if (task && snapshot?.completedTasks.includes(task)) setTask(null);
   }, [snapshot?.completedTasks, task]);
+  useEffect(() => {
+    if (!task || snapshot?.role !== 'crew' || taskReady === task) return;
+    const retryTask = setInterval(() => send(socket.current, { type: 'taskStart', id: task }), 700);
+    return () => clearInterval(retryTask);
+  }, [task, taskReady, snapshot?.role]);
 
   const createRoom = async () => {
     if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
@@ -160,6 +185,8 @@ function App() {
   const openTask = (id: string) => {
     if (!snapshot || snapshot.completedTasks.includes(id)) return;
     keys.current.clear();
+    taskRef.current = id;
+    setTaskReady(null);
     setTask(id);
     if (snapshot.role === 'crew') send(socket.current, { type: 'taskStart', id });
   };
@@ -234,7 +261,7 @@ function App() {
         <div className="panel"><h3>{snapshot.role === 'crew' ? `NHIỆM VỤ · ${snapshot.completedTasks.length}/${snapshot.tasks.length}` : 'NGƯỜI CHƠI'}</h3>{snapshot.role === 'crew' ? STATIONS.map(s => <div className={`task-row ${snapshot.completedTasks.includes(s.id) ? 'is-done' : ''}`} key={s.id}><span>{snapshot.completedTasks.includes(s.id) ? '✓' : '○'}</span><div>{s.name}<small>{s.room}</small></div></div>) : snapshot.players.map(p => <div className="task-row" key={p.id}><span style={{ color: p.color }}>●</span>{p.name}{snapshot.allies.includes(p.id) && ' ◆'}</div>)}</div>
       </aside>
     </main>}
-    {task && snapshot.phase === 'playing' && <TaskModal key={task} id={task} fake={snapshot.role === 'impostor'} onClose={() => setTask(null)} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task }); else setTask(null); }} />}
+    {task && snapshot.phase === 'playing' && <TaskModal key={task} id={task} fake={snapshot.role === 'impostor'} ready={snapshot.role === 'impostor' || taskReady === task} onClose={() => setTask(null)} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task }); else setTask(null); }} />}
       {meeting && snapshot.phase === 'meeting' && <div className="overlay"><section className="modal meeting-modal"><div className="eyebrow">{meeting.reason.toUpperCase()} · {meeting.stage === 'discussion' ? 'THẢO LUẬN' : meeting.stage === 'voting' ? 'BỎ PHIẾU' : 'KẾT QUẢ'}</div><h2>{meeting.stage === 'result' ? meeting.ejected ? `${snapshot.players.find(p => p.id === meeting.ejected)?.name || 'Một người'} đã bị loại` : 'Không ai bị loại' : 'Ai là kẻ phá hoại?'}</h2><div className="timer">{seconds(meeting.endsAt)}s</div><div className="meeting-grid"><div className="vote-list">{snapshot.players.map(p => <button key={p.id} disabled={!p.alive || meeting.stage !== 'voting' || !me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: p.id })}><span className="player-dot" style={{ background: p.color }} />{p.name}{!p.alive && ' · đã chết'}{meeting.votesCast.includes(p.id) && <small>ĐÃ BỎ PHIẾU</small>}</button>)}{meeting.stage === 'voting' && <button disabled={!me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: null })}>Bỏ qua phiếu</button>}</div><div className="chat"><div className="messages">{snapshot.chat.map(m => <div key={m.id}><strong>{m.name}: </strong>{m.text}</div>)}</div><form onSubmit={e => { e.preventDefault(); send(socket.current, { type: 'chat', text: chatText }); setChatText(''); }}><input value={chatText} maxLength={180} placeholder={me?.alive ? 'Nhắn trong cuộc họp…' : 'Chỉ ma khác thấy tin nhắn…'} onChange={e => setChatText(e.target.value)} /><button disabled={!chatText.trim()}>Gửi</button></form></div></div></section></div>}
     {snapshot.phase === 'ended' && <div className="overlay"><section className="modal end-modal"><div className="eyebrow">VÁN ĐẤU KẾT THÚC</div><h2 className={snapshot.winner === 'impostor' ? 'red' : 'cyan'}>{snapshot.winner === 'impostor' ? 'KẺ PHÁ HOẠI THẮNG' : 'PHI HÀNH ĐOÀN THẮNG'}</h2><p>{snapshot.winnerReason}</p><div className="winner-list">{snapshot.players.map(p => <span key={p.id} style={{ color: p.color }}>{p.name}{snapshot.allies.includes(p.id) ? ' ◆' : ''}</span>)}</div>{snapshot.host === snapshot.me ? <button className="primary large" onClick={() => send(socket.current, { type: 'restart' })}>Chơi ván mới →</button> : <p>Đang chờ host mở ván mới…</p>}</section></div>}
     {error && <div className="toast" onClick={() => setError('')}>{error} ×</div>}

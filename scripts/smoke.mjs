@@ -5,7 +5,8 @@ const origin = process.env.SMOKE_ORIGIN || 'http://localhost:5173';
 const base = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const ejectMode = process.argv.includes('--eject');
 const quickMode = process.argv.includes('--quick');
-const taskMode = process.argv.includes('--task');
+const wireMode = process.argv.includes('--wire');
+const taskMode = process.argv.includes('--task') || wireMode;
 const killMode = process.argv.includes('--kill');
 const response = await fetch(`${base}/rooms`, { method: 'POST', headers: { Origin: origin } });
 assert.equal(response.status, 201);
@@ -14,11 +15,12 @@ assert.match(code, /^[A-Z2-9]{6}$/);
 
 function join(name, token = '') {
   return new Promise((resolve, reject) => {
-    const client = { socket: new WebSocket(`${base.replace('http', 'ws')}/ws/${code}?name=${name}&token=${token}`, { headers: { Origin: origin } }), snapshots: [], token: '' };
+    const client = { socket: new WebSocket(`${base.replace('http', 'ws')}/ws/${code}?name=${name}&token=${token}`, { headers: { Origin: origin } }), snapshots: [], readyTasks: new Set(), token: '' };
     client.socket.on('message', raw => {
       const message = JSON.parse(raw.toString());
       if (message.type === 'welcome') client.token = message.token;
       if (message.type === 'snapshot') client.snapshots.push(message);
+      if (message.type === 'taskReady') client.readyTasks.add(message.id);
       if (message.type === 'snapshot' && client.token) resolve(client);
     });
     client.socket.on('error', reject);
@@ -62,24 +64,35 @@ if (taskMode) {
   const crew = clients.find(client => client !== host && latest(client).role === 'crew');
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const walk = async (axis, goal) => {
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 35; i++) {
       const me = latest(crew).players.find(p => p.id === latest(crew).me);
       if (Math.abs(me[axis] - goal) < 18) return;
       const sign = Math.sign(goal - me[axis]);
       crew.socket.send(JSON.stringify({ type: 'move', dx: axis === 'x' ? sign : 0, dy: axis === 'y' ? sign : 0 }));
       await delay(145);
     }
-    throw new Error(`Could not reach ${axis}=${goal}`);
+    throw new Error(`Could not reach ${axis}=${goal}; current=${JSON.stringify(latest(crew).players.find(p => p.id === latest(crew).me))}`);
   };
   await delay(150);
-  await walk('x', 800);
-  await walk('y', 220);
-  crew.socket.send(JSON.stringify({ type: 'taskStart', id: 'scan' }));
-  await delay(2050);
-  crew.socket.send(JSON.stringify({ type: 'taskComplete', id: 'scan' }));
-  await waitFor(() => latest(crew).completedTasks.includes('scan'));
+  if (wireMode) {
+    await walk('y', 675);
+    await walk('x', 500);
+    await walk('y', 190);
+    await walk('x', 300);
+  } else {
+    await walk('x', 1050);
+    await walk('y', 245);
+  }
+  const taskId = wireMode ? 'wires' : 'scan';
+  // Reproduce the former race: opening a task immediately after a movement packet.
+  crew.socket.send(JSON.stringify({ type: 'move', dx: 0, dy: 0 }));
+  crew.socket.send(JSON.stringify({ type: 'taskStart', id: taskId }));
+  await waitFor(() => crew.readyTasks.has(taskId));
+  await delay(1950);
+  crew.socket.send(JSON.stringify({ type: 'taskComplete', id: taskId }));
+  await waitFor(() => latest(crew).completedTasks.includes(taskId));
   assert.ok(latest(crew).taskProgress > 0);
-  console.log('PASS: crew reached medical room and completed scan');
+  console.log(`PASS: crew reached station and completed ${taskId}`);
 }
 host.socket.send(JSON.stringify({ type: 'emergency' }));
 await waitFor(() => latest(host)?.phase === 'meeting');

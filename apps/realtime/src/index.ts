@@ -127,10 +127,11 @@ export class GameRoom extends DurableObject<Env> {
     try { message = JSON.parse(data) as ClientMessage; } catch { return; }
     if (!message || typeof message.type !== 'string') return;
     const now = Date.now();
-    if (now - player.lastMessageAt < 20) return;
+    if (now - player.lastMessageAt < 20 && message.type !== 'taskStart' && message.type !== 'taskComplete') return;
     player.lastMessageAt = now;
     const error = await this.handle(player, message, now);
     if (error) this.send(ws, { type: 'error', message: error });
+    else if (message.type === 'taskStart') this.send(ws, { type: 'taskReady', id: message.id });
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
@@ -198,10 +199,10 @@ export class GameRoom extends DurableObject<Env> {
       if (now - this.lastPersist >= 1000) await this.persist();
       return;
     } else if (m.type === 'taskStart') {
-      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return;
+      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return 'Nhiệm vụ không khả dụng.';
       const station = STATIONS.find(s => s.id === m.id);
-      if (!station || distance(p, station) > INTERACT_RANGE) return;
-      p.taskStarted[m.id] = now;
+      if (!station || distance(p, station) > INTERACT_RANGE) return 'Hãy đứng gần trạm nhiệm vụ.';
+      p.taskStarted[m.id] ??= now;
     } else if (m.type === 'taskComplete') {
       if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return;
       const station = STATIONS.find(s => s.id === m.id);
@@ -288,7 +289,7 @@ export class GameRoom extends DurableObject<Env> {
     g.winner = null; g.winnerReason = ''; g.lightsFixed = true; g.reactorDeadline = 0;
     g.players.forEach((p, i) => {
       p.role = impostors.has(p.id) ? 'impostor' : 'crew'; p.alive = true;
-      p.x = 740 + i % 5 * 30; p.y = 455 + Math.floor(i / 5) * 90;
+      p.x = 990 + i % 5 * 30; p.y = 625 + Math.floor(i / 5) * 90;
       p.tasks = p.role === 'crew' ? STATIONS.map(s => s.id) : [];
       p.completedTasks = []; p.taskStarted = {}; p.killReadyAt = now + 20_000;
       p.sabotageReadyAt = now + 15_000; p.emergencyUsed = 0; p.lastMoveAt = now;
@@ -301,7 +302,7 @@ export class GameRoom extends DurableObject<Env> {
     g.bodies = [];
     g.meeting = { stage: 'discussion', endsAt: now + 45_000, reporter: p.id, reason, ejected: null, skipped: false };
     g.chat = [{ id: crypto.randomUUID(), name: 'Hệ thống', text: `${p.name}: ${reason}`, at: now, ghost: false }];
-    g.players.forEach(x => { x.votes = undefined; x.x = 740 + g.players.indexOf(x) % 5 * 30; x.y = 455 + Math.floor(g.players.indexOf(x) / 5) * 90; });
+    g.players.forEach(x => { x.votes = undefined; x.x = 990 + g.players.indexOf(x) % 5 * 30; x.y = 625 + Math.floor(g.players.indexOf(x) / 5) * 90; });
   }
 
   private advanceMeeting(now: number): void {
