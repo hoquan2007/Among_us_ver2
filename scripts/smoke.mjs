@@ -28,15 +28,17 @@ function join(name, token = '') {
 const clients = await Promise.all(['A', 'B', 'C', 'D'].map(join));
 const latest = client => client.snapshots.at(-1);
 const waitFor = async predicate => {
-  const until = Date.now() + 55_000;
+  const until = Date.now() + Number(process.env.SMOKE_TIMEOUT_MS || 55_000);
   while (Date.now() < until) {
     if (predicate()) return;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error('Timed out waiting for game state');
+  throw new Error(`Timed out waiting for game state: ${JSON.stringify(clients.map(client => ({ ready: client.socket.readyState, players: latest(client)?.players.length, phase: latest(client)?.phase, count: client.snapshots.length })))}`);
 };
 await waitFor(() => clients.every(client => latest(client)?.players.length === 4));
-clients[0].socket.send(JSON.stringify({ type: 'start' }));
+const host = clients.find(client => latest(client).me === latest(client).host);
+assert.ok(host, 'Host must be connected');
+host.socket.send(JSON.stringify({ type: 'start' }));
 await waitFor(() => clients.every(client => latest(client)?.phase === 'playing'));
 for (const client of clients) {
   assert.equal(latest(client).phase, 'playing');
@@ -57,7 +59,7 @@ if (killMode) {
   process.exit(0);
 }
 if (taskMode) {
-  const crew = clients.find((client, index) => index > 0 && latest(client).role === 'crew');
+  const crew = clients.find(client => client !== host && latest(client).role === 'crew');
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const walk = async (axis, goal) => {
     for (let i = 0; i < 25; i++) {
@@ -79,7 +81,6 @@ if (taskMode) {
   assert.ok(latest(crew).taskProgress > 0);
   console.log('PASS: crew reached medical room and completed scan');
 }
-const host = clients[0];
 host.socket.send(JSON.stringify({ type: 'emergency' }));
 await waitFor(() => latest(host)?.phase === 'meeting');
 assert.equal(latest(host).phase, 'meeting');
