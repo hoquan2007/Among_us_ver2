@@ -1,0 +1,16 @@
+{
+  "name": "starship-suspects",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev:web": "npm run dev -w apps/web",
+    "dev:server": "npm run dev -w apps/realtime",
+    "build": "npm run build -w apps/web",
+    "check": "npm run check -w apps/web && npm run check -w apps/realtime",
+    "smoke": "node scripts/smoke.mjs",
+    "deploy:server": "npm run deploy -w apps/realtime"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@starship/realtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
