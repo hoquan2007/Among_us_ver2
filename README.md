@@ -41,7 +41,7 @@ Hệ thống gồm hai phần: website tĩnh trên Vercel Hobby và Worker/Durab
 
 ### 2. Vercel frontend
 
-1. Đẩy repo lên tài khoản Git cá nhân rồi import vào Vercel. Chọn **root directory là thư mục gốc repo**; `vercel.json` đã chỉ định lệnh build và thư mục output.
+1. Đẩy repo lên tài khoản Git cá nhân rồi import vào Vercel. Chọn **root directory là thư mục gốc repo**; `vercel.json` đã chỉ định lệnh build, thư mục output và `npm ci --include=dev` để TypeScript có mặt khi build.
 2. Trong Environment Variables, đặt `VITE_REALTIME_URL` là URL Worker ở bước 1, bắt đầu bằng `https://` và không có `/` cuối.
 3. Deploy production. Nếu URL Vercel thực tế khác giá trị `WEB_ORIGIN`, sửa giá trị đó trong Wrangler và deploy Worker lại.
 4. Mở URL Vercel trên hai máy/mạng khác nhau, tạo phòng và vào bằng link để kiểm tra HTTPS/WSS.
