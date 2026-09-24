@@ -1,9 +1,9 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  COLORS, DOORS, EMERGENCY, INTERACT_RANGE, KILL_RANGE, MAP, PRESETS, PROTOCOL_VERSION, REACTOR_FIXES, SPEED,
+  COLORS, DOORS, EMERGENCY, INTERACT_RANGE, KILL_RANGE, PRESETS, PROTOCOL_VERSION, REACTOR_FIXES, SPEED,
   STATIONS, VENTS, collides, distance, hitsRect,
   type Body, type ChatMessage, type ClientMessage, type KillEffect, type MeetingStage,
-  type Phase, type Preset, type Role, type Sabotage, type ServerMessage, type Snapshot
+  type MapVariant, type Phase, type Preset, type Role, type Sabotage, type ServerMessage, type Snapshot, mapBounds
 } from '../../../packages/protocol/src/index';
 
 interface Env { ROOMS: DurableObjectNamespace<GameRoom>; WEB_ORIGIN: string; }
@@ -20,7 +20,7 @@ interface Meeting {
   ejected: string | null; skipped: boolean; endVotes: string[];
 }
 interface Game {
-  code: string; createdAt: number; phase: Phase; preset: Preset; host: string;
+  code: string; createdAt: number; phase: Phase; preset: Preset; mapVariant?: MapVariant; host: string;
   players: Player[]; bodies: Body[]; kills?: KillEffect[]; sabotage: Sabotage; reactorDeadline: number;
   reactorFixed: number[]; reactorFixers: Record<number, { id: string; at: number }>; lightsFixed: boolean; doorsUntil: number;
   meeting: Meeting | null; chat: ChatMessage[]; winner: Role | null; winnerReason: string;
@@ -41,7 +41,8 @@ const SPAWNS = [
 ] as const;
 const TASK_SEQUENCE: Record<string, number[]> = {
   fuel: Array(8).fill(1), calibrate: [0, 1, 2], valves: [2, 0, 1],
-  cargo: [1, 2, 0, 3], frequency: [73]
+  cargo: [1, 2, 0, 3], frequency: [73], shield: [2, 0, 3, 1],
+  robot: [1, 3, 0, 2], water: Array(6).fill(1)
 };
 
 export default {
@@ -86,7 +87,7 @@ export class GameRoom extends DurableObject<Env> {
     if (url.pathname === '/init' && request.method === 'POST') {
       if (this.game) return json({ error: 'exists' }, 409);
       const code = url.searchParams.get('code') || '';
-      this.game = { code, createdAt: Date.now(), phase: 'lobby', preset: 'standard', host: '', players: [], bodies: [], kills: [], sabotage: null,
+      this.game = { code, createdAt: Date.now(), phase: 'lobby', preset: 'standard', mapVariant: 'core', host: '', players: [], bodies: [], kills: [], sabotage: null,
         reactorDeadline: 0, reactorFixed: [], reactorFixers: {}, lightsFixed: true, doorsUntil: 0,
         meeting: null, chat: [], winner: null, winnerReason: '' };
       await this.persist();
@@ -104,7 +105,7 @@ export class GameRoom extends DurableObject<Env> {
       if (game.players.length >= 10) return json({ error: 'Phòng đã đầy' }, 409);
       const id = crypto.randomUUID();
       const color = COLORS.find(c => !game.players.some(p => p.color === c)) || COLORS[game.players.length % COLORS.length];
-      player = { id, token: crypto.randomUUID(), name, color, x: MAP.width / 2, y: MAP.height / 2,
+      player = { id, token: crypto.randomUUID(), name, color, x: EMERGENCY.x, y: EMERGENCY.y,
         alive: true, connected: true, disconnectedAt: 0, role: null, tasks: [], completedTasks: [], taskStarted: {}, taskSteps: {},
         killReadyAt: 0, sabotageReadyAt: 0, emergencyUsed: 0, lastMoveAt: Date.now(), votes: undefined };
       game.players.push(player);
@@ -207,8 +208,9 @@ export class GameRoom extends DurableObject<Env> {
       const vx = dx / Math.max(1, magnitude) * SPEED * dt / 1000;
       const vy = dy / Math.max(1, magnitude) * SPEED * dt / 1000;
       const x = p.x + vx, y = p.y + vy;
-      if ((!p.alive ? x >= 24 && x <= MAP.width - 24 : !collides(x, p.y) && !this.doorBlocks(x, p.y, now))) p.x = x;
-      if ((!p.alive ? y >= 24 && y <= MAP.height - 24 : !collides(p.x, y) && !this.doorBlocks(p.x, y, now))) p.y = y;
+      const bounds = mapBounds(g.mapVariant || 'core');
+      if ((!p.alive ? x >= 24 && x <= bounds.width - 24 : !collides(x, p.y, g.mapVariant || 'core') && !this.doorBlocks(x, p.y, now))) p.x = x;
+      if ((!p.alive ? y >= 24 && y <= bounds.height - 24 : !collides(p.x, y, g.mapVariant || 'core') && !this.doorBlocks(p.x, y, now))) p.y = y;
       if (now - this.lastBroadcast >= 100) this.broadcast();
       if (now - this.lastPersist >= 1000) await this.persist();
       return;
@@ -235,7 +237,7 @@ export class GameRoom extends DurableObject<Env> {
     } else if (m.type === 'taskComplete') {
       if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return;
       const station = STATIONS.find(s => s.id === m.id);
-      const minimum = m.id === 'scan' || m.id === 'upload' ? 3000 : 1800;
+      const minimum = m.id === 'scan' || m.id === 'upload' || m.id === 'archive' ? 3000 : 1800;
       const expected = m.id === 'wires' ? 3 : TASK_SEQUENCE[m.id]?.length || 0;
       if (!station || distance(p, station) > INTERACT_RANGE || now - (p.taskStarted[m.id] || 0) < minimum ||
         (p.taskSteps?.[m.id]?.length || 0) < expected) return 'Hãy hoàn thành nhiệm vụ tại trạm.';
@@ -325,6 +327,7 @@ export class GameRoom extends DurableObject<Env> {
   private startGame(now: number): void {
     const g = this.game!;
     const count = g.players.length >= 7 ? 2 : 1;
+    g.mapVariant = g.players.length >= 7 ? 'full' : 'core';
     const shuffled = [...g.players];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
@@ -336,7 +339,13 @@ export class GameRoom extends DurableObject<Env> {
     g.players.forEach((p, i) => {
       p.role = impostors.has(p.id) ? 'impostor' : 'crew'; p.alive = true;
       p.x = SPAWNS[i][0]; p.y = SPAWNS[i][1];
-      p.tasks = p.role === 'crew' ? STATIONS.slice(0, PRESETS[g.preset || 'standard'].tasks).map(s => s.id) : [];
+      const taskCount = PRESETS[g.preset || 'standard'].tasks;
+      const core = STATIONS.filter(s => !('outer' in s));
+      const outer = STATIONS.filter(s => 'outer' in s);
+      const chosen = g.mapVariant === 'full'
+        ? [...Array.from({ length: taskCount - 2 }, (_, offset) => core[(i + offset) % core.length]), outer[(i * 2) % outer.length], outer[(i * 2 + 1) % outer.length]]
+        : core.slice(0, taskCount);
+      p.tasks = p.role === 'crew' ? chosen.map(s => s.id) : [];
       p.completedTasks = []; p.taskStarted = {}; p.taskSteps = {}; p.killReadyAt = now + 20_000;
       p.sabotageReadyAt = now + 15_000; p.emergencyUsed = 0; p.lastMoveAt = now;
     });
@@ -417,7 +426,7 @@ export class GameRoom extends DurableObject<Env> {
     const totalTasks = crew.reduce((n, x) => n + x.tasks.length, 0);
     const doneTasks = crew.reduce((n, x) => n + x.completedTasks.length, 0);
     return {
-      type: 'snapshot', protocolVersion: PROTOCOL_VERSION, code: g.code, phase: g.phase, preset: g.preset || 'standard', me: p.id, host: g.host,
+      type: 'snapshot', protocolVersion: PROTOCOL_VERSION, code: g.code, phase: g.phase, preset: g.preset || 'standard', mapVariant: g.mapVariant || 'core', me: p.id, host: g.host,
       players: g.players.filter(x => x.id === p.id || (visible(x) && (g.phase !== 'playing' || x.alive || !p.alive))).map(x => ({ id: x.id, name: x.name, color: x.color, x: x.x, y: x.y, alive: x.alive, connected: x.connected })),
       role: p.role, allies: p.role === 'impostor' || g.phase === 'ended' ? g.players.filter(x => x.role === 'impostor').map(x => x.id) : [],
       tasks: p.tasks, completedTasks: p.completedTasks, taskProgress: totalTasks ? doneTasks / totalTasks : 0,

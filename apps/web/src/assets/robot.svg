@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="320" viewBox="0 0 440 320">
+  <defs><radialGradient id="floor"><stop stop-color="#306378"/><stop offset="1" stop-color="#173448"/></radialGradient><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M0 0h40v40" fill="none" stroke="#a4e4e9" opacity=".1"/></pattern></defs>
+  <rect width="440" height="320" fill="url(#floor)"/><rect width="440" height="320" fill="url(#grid)"/>
+  <g fill="none" stroke="#a2e8df" opacity=".45" stroke-width="5"><circle cx="105" cy="150" r="68"/><circle cx="220" cy="150" r="68"/><circle cx="335" cy="150" r="68"/></g>
+  <g fill="#5cb9c5" opacity=".35"><rect x="74" y="120" width="62" height="61" rx="12"/><rect x="189" y="120" width="62" height="61" rx="12"/><rect x="304" y="120" width="62" height="61" rx="12"/></g>
+  <path d="M30 254h380" stroke="#f0ca80" opacity=".5" stroke-width="8" stroke-dasharray="30 15"/>
+</svg>

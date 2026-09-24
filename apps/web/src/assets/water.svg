@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="320" viewBox="0 0 430 320">
+  <defs><radialGradient id="floor"><stop stop-color="#28687a"/><stop offset="1" stop-color="#153a4c"/></radialGradient><pattern id="waves" width="72" height="42" patternUnits="userSpaceOnUse"><path d="M0 21q18-13 36 0t36 0" fill="none" stroke="#a7e8ec" opacity=".16" stroke-width="3"/></pattern></defs>
+  <rect width="430" height="320" fill="url(#floor)"/><rect width="430" height="320" fill="url(#waves)"/>
+  <g fill="#174353" stroke="#a1e5e9" stroke-opacity=".5" stroke-width="5"><circle cx="96" cy="153" r="58"/><circle cx="215" cy="153" r="58"/><circle cx="334" cy="153" r="58"/></g>
+  <path d="M38 256h354M38 66h354" stroke="#78c8d7" opacity=".45" stroke-width="13"/><path d="M38 256h354M38 66h354" stroke="#c6f5ed" opacity=".25" stroke-width="3"/>
+  <g fill="#88d2e3" opacity=".33"><path d="M96 127c-11 17-18 25-18 35a18 18 0 0036 0c0-10-7-18-18-35z"/><path d="M215 127c-11 17-18 25-18 35a18 18 0 0036 0c0-10-7-18-18-35z"/><path d="M334 127c-11 17-18 25-18 35a18 18 0 0036 0c0-10-7-18-18-35z"/></g>
+</svg>

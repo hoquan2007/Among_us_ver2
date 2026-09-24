@@ -31,15 +31,15 @@ function TaskModal({ id, fake, ready, onClose, onStep, onComplete }: { id: strin
   const finish = () => {
     if (completed.current) return;
     completed.current = true;
-    completion.current = setTimeout(onComplete, Math.max(0, (id === 'scan' || id === 'upload' ? 3200 : 2000) - (Date.now() - started.current)));
+    completion.current = setTimeout(onComplete, Math.max(0, (id === 'scan' || id === 'upload' || id === 'archive' ? 3200 : 2000) - (Date.now() - started.current)));
   };
   useEffect(() => { if (ready) started.current = Date.now(); }, [ready]);
   useEffect(() => {
-    if (!ready || (id !== 'scan' && id !== 'upload')) return;
+    if (!ready || (id !== 'scan' && id !== 'upload' && id !== 'archive')) return;
     const timer = setInterval(() => setProgress(value => Math.min(100, value + 4)), 120);
     return () => clearInterval(timer);
   }, [id, ready]);
-  useEffect(() => { if (progress >= 100 && (id === 'scan' || id === 'upload')) finish(); }, [progress]);
+  useEffect(() => { if (progress >= 100 && (id === 'scan' || id === 'upload' || id === 'archive')) finish(); }, [progress]);
   useEffect(() => () => { if (completion.current) clearTimeout(completion.current); }, []);
   const symbols = ['◆', '●', '▲'];
   const wireColors = ['#ef7989', '#75e2dc', '#e9c76c'];
@@ -61,11 +61,16 @@ function TaskModal({ id, fake, ready, onClose, onStep, onComplete }: { id: strin
       <div className="wire-column"><span className="wire-heading">ĐẦU NHẬN</span>{[2, 0, 1].map(n => <button key={`right-${n}`} disabled={!ready || connectedWires.includes(n) || completed.current} className={connectedWires.includes(n) ? 'done' : ''} style={{ borderColor: wireColors[n] }} onClick={() => connectWire(n)}><i style={{ background: wireColors[n] }} />{wireNames[n]}</button>)}</div>
     </div><div className="task-instruction" role="status">{connectedWires.length}/3 mạch đã nối · {wireHint}</div></>}
     {id === 'fuel' && <><p>Nhấn để nạp đầy bình nhiên liệu.</p><div className="task-gauge"><i style={{ width: `${step * 12.5}%` }} /></div><button className="task-control" disabled={!ready || completed.current} onClick={() => { if (!fake) onStep(1); if (step >= 7) finish(); setStep(Math.min(8, step + 1)); }}>NẠP NHIÊN LIỆU</button><div>{Math.round(step * 12.5)}%</div></>}
-    {(id === 'scan' || id === 'upload') && <><p>{id === 'scan' ? 'Đang quét mẫu sinh học…' : 'Đang tải dữ liệu về tàu…'}</p><div className="task-gauge"><i style={{ width: `${progress}%` }} /></div><strong>{progress}%</strong></>}
+    {(id === 'scan' || id === 'upload' || id === 'archive') && <><p>{id === 'scan' ? 'Đang quét mẫu sinh học…' : id === 'archive' ? 'Đang khôi phục kho lưu trữ…' : 'Đang tải dữ liệu về tàu…'}</p><div className="task-gauge"><i style={{ width: `${progress}%` }} /></div><strong>{progress}%</strong></>}
     {id === 'calibrate' && <><p>Nhấn các ký hiệu theo thứ tự.</p><div className="sequence">{symbols.map((symbol, i) => <span key={i} className={i < step ? 'done' : i === step ? 'current' : ''}>{symbol}</span>)}</div><div className="symbol-buttons">{[...symbols].reverse().map(symbol => <button key={symbol} disabled={!ready || completed.current} onClick={() => { if (symbol !== symbols[step]) return; if (!fake) onStep(step); if (step === 2) finish(); else setStep(step + 1); }}>{symbol}</button>)}</div></>}
     {id === 'valves' && <><p>Mở van theo thứ tự hiển thị để cân bằng áp suất oxy.</p><div className="sequence"><span>③</span><span>①</span><span>②</span></div><div className="task-puzzle-buttons">{[0, 1, 2].map(n => <button key={n} disabled={!ready || completed.current || [2, 0, 1].slice(0, step).includes(n)} onClick={() => { if ([2, 0, 1][step] !== n) return; if (!fake) onStep(n); if (step === 2) finish(); setStep(step + 1); }}>VAN {n + 1}</button>)}</div><div className="task-instruction">{step}/3 van đã mở</div></>}
     {id === 'cargo' && <><p>Chuyển kiện hàng theo thứ tự mã trên manifest: B → C → A → D.</p><div className="task-puzzle-buttons">{[0, 1, 2, 3].map(n => <button key={n} disabled={!ready || completed.current || [1, 2, 0, 3].slice(0, step).includes(n)} onClick={() => { if ([1, 2, 0, 3][step] !== n) return; if (!fake) onStep(n); if (step === 3) finish(); setStep(step + 1); }}>KIỆN {['A', 'B', 'C', 'D'][n]}</button>)}</div><div className="task-instruction">{step}/4 kiện đã xử lý</div></>}
     {id === 'frequency' && <><p>Điều chỉnh tần số về vùng tín hiệu 73 MHz (±2 MHz).</p><div className="frequency-readout">{frequency} <small>MHz</small></div><input className="frequency-slider" type="range" min="0" max="100" value={frequency} disabled={!ready || completed.current} onChange={event => setFrequency(Number(event.target.value))} /><button className="task-control" disabled={!ready || completed.current || Math.abs(frequency - 73) > 2} onClick={() => { if (!fake) onStep(73); finish(); }}>KHÓA TÍN HIỆU</button></>}
+    {(id === 'shield' || id === 'robot') && (() => {
+      const order = id === 'shield' ? [2, 0, 3, 1] : [1, 3, 0, 2];
+      return <><p>{id === 'shield' ? 'Kích hoạt bốn nút lá chắn theo thứ tự trên màn hình.' : 'Nạp lệnh điều khiển robot theo thứ tự trên màn hình.'}</p><div className="sequence">{order.map((value, index) => <span key={index} className={index < step ? 'done' : index === step ? 'current' : ''}>{value + 1}</span>)}</div><div className="task-puzzle-buttons">{[0, 1, 2, 3].map(value => <button key={value} disabled={!ready || completed.current} onClick={() => { if (order[step] !== value) return; if (!fake) onStep(value); if (step === 3) finish(); setStep(step + 1); }}>NÚT {value + 1}</button>)}</div><div className="task-instruction">{step}/4 lệnh đã nhận</div></>;
+    })()}
+    {id === 'water' && <><p>Nhấn lọc sáu lần để làm sạch bồn nước.</p><div className="task-gauge"><i style={{ width: `${step / 6 * 100}%` }} /></div><button className="task-control" disabled={!ready || completed.current} onClick={() => { if (!fake) onStep(1); if (step === 5) finish(); setStep(Math.min(6, step + 1)); }}>LỌC NƯỚC</button><div>{step}/6 chu kỳ</div></>}
     <small>{completed.current ? 'Đang xác nhận…' : fake ? 'Giữ bí mật vai trò của bạn.' : 'Ở gần trạm cho đến khi hoàn thành.'}</small>
   </section></div>;
 }
@@ -191,7 +196,7 @@ function App() {
   };
 
   const me = snapshot?.players.find(p => p.id === snapshot.me);
-  const nearStation = snapshot && me ? STATIONS.find(s => distance(s, me) <= INTERACT_RANGE && (snapshot.tasks.includes(s.id) || snapshot.role === 'impostor')) : null;
+  const nearStation = snapshot && me ? STATIONS.find(s => distance(s, me) <= INTERACT_RANGE && (snapshot.tasks.includes(s.id) || snapshot.role === 'impostor' || (snapshot.sabotage === 'lights' && s.id === 'wires'))) : null;
   const nearBody = snapshot && me ? snapshot.bodies.find(b => distance(b, me) <= INTERACT_RANGE) : null;
   const nearTarget = snapshot && me && snapshot.role === 'impostor' ? snapshot.players.find(p => p.id !== me.id && p.alive && !snapshot.allies.includes(p.id) && distance(p, me) <= KILL_RANGE) : null;
   const nearVent = snapshot && me ? VENTS.findIndex(v => distance(v, me) <= INTERACT_RANGE) : -1;
@@ -251,7 +256,7 @@ function App() {
   return <div className="app-shell">
     <header className="topbar"><div className="brand">✦ STARSHIP <strong>SUSPECTS</strong></div><div className="room-code">PHÒNG <strong>{code}</strong></div><div className="connection"><span className="online-dot" /> {status}</div><button className="ghost-button music-toggle" aria-pressed={musicOn} onClick={() => { setMusicEnabled(!musicOn); setMusicOn(!musicOn); }}>♫ Nhạc {musicOn ? 'bật' : 'tắt'}</button><button className="ghost-button" onClick={leave}>Rời phòng</button></header>
     {snapshot.phase === 'lobby' ? <main className="lobby">
-      <div className="lobby-main"><div className="eyebrow">SẢNH CHỜ · {snapshot.players.length}/10 NGƯỜI</div><h2>Chuẩn bị lên tàu</h2><p>Gửi link hoặc mã phòng để mời bạn bè. Cần ít nhất 4 người để bắt đầu.</p>
+      <div className="lobby-main"><div className="eyebrow">SẢNH CHỜ · {snapshot.players.length}/10 NGƯỜI</div><h2>Chuẩn bị lên tàu</h2><p>Gửi link hoặc mã phòng để mời bạn bè. Cần ít nhất 4 người để bắt đầu. 4–6 người chơi ở lõi 16 phòng; từ 7 người mở toàn tàu 22 phòng.</p>
         <div className="invite"><span>{invite}</span><button onClick={share}>{copied ? 'Đã sao chép' : 'Sao chép link'}</button></div>
         <div className="code-display">{code.split('').map((c, i) => <span key={i}>{c}</span>)}</div>
         <div className="preset-grid">{(Object.entries(PRESETS) as [keyof typeof PRESETS, (typeof PRESETS)[keyof typeof PRESETS]][]).map(([key, preset]) => <button key={key} className={snapshot.preset === key ? 'selected' : ''} disabled={snapshot.host !== snapshot.me} onClick={() => send(socket.current, { type: 'preset', value: key })}><strong>{preset.name}</strong><span>{preset.tasks} nhiệm vụ · Họp {preset.discussion}s · Bỏ phiếu {preset.voting}s</span></button>)}</div>
@@ -260,7 +265,7 @@ function App() {
       </div><div className="lobby-list"><h3>PHI HÀNH ĐOÀN</h3>{snapshot.players.map(p => <div className="player-row" key={p.id}><span className="player-dot" style={{ background: p.color }} /><strong>{p.name}</strong>{p.id === snapshot.host && <small>HOST</small>}{!p.connected && <small>MẤT KẾT NỐI</small>}</div>)}</div>
     </main> : <main className="game-layout">
       <section className="map-panel">
-        <div className="map-header"><div><span className="eyebrow">{snapshot.phase === 'ended' ? 'KẾT THÚC' : snapshot.phase === 'meeting' ? 'HỌP KHẨN CẤP' : 'ĐANG CHƠI'} · {currentRoom}</span><h2>{snapshot.role === 'impostor' ? 'Kẻ phá hoại' : 'Phi hành đoàn'}</h2></div><div className="progress"><span>NHIỆM VỤ {Math.round(snapshot.taskProgress * 100)}%</span><div><i style={{ width: `${snapshot.taskProgress * 100}%` }} /></div></div></div>
+        <div className="map-header"><div><span className="eyebrow">{snapshot.phase === 'ended' ? 'KẾT THÚC' : snapshot.phase === 'meeting' ? 'HỌP KHẨN CẤP' : 'ĐANG CHƠI'} · {currentRoom} · {snapshot.mapVariant === 'full' ? '22 PHÒNG' : '16 PHÒNG'}</span><h2>{snapshot.role === 'impostor' ? 'Kẻ phá hoại' : 'Phi hành đoàn'}</h2></div><div className="progress"><span>NHIỆM VỤ {Math.round(snapshot.taskProgress * 100)}%</span><div><i style={{ width: `${snapshot.taskProgress * 100}%` }} /></div></div></div>
         <div className="canvas-wrap"><GameScene game={snapshot} onInteract={interact} pressed={keys} /></div>
         <div className="map-footer"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> DI CHUYỂN</span><span><kbd>E</kbd> TƯƠNG TÁC</span><span>{snapshot.role === 'impostor' ? <><kbd>Q</kbd> HẠ GỤC · <kbd>V</kbd> THÔNG HƠI</> : 'KHÁM PHÁ CÁC PHÒNG ĐỂ LÀM NHIỆM VỤ'}</span></div>
       </section>

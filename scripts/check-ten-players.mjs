@@ -5,6 +5,7 @@ const base = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const origin = process.env.SMOKE_ORIGIN || 'http://localhost:5173';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const latest = client => client.snapshots.at(-1);
+const self = client => latest(client).players.find(player => player.id === latest(client).me);
 const clients = [];
 async function until(predicate, label, timeout = 20_000) {
   const stop = Date.now() + timeout;
@@ -12,12 +13,26 @@ async function until(predicate, label, timeout = 20_000) {
   throw new Error(`Timed out: ${label}`);
 }
 function send(client, message) { client.socket.send(JSON.stringify(message)); }
+async function walk(client, axis, goal) {
+  for (let i = 0; i < 130; i++) {
+    if (Math.abs(self(client)[axis] - goal) < 16) {
+      await delay(350);
+      if (Math.abs(self(client)[axis] - goal) < 20) return;
+      continue;
+    }
+    const sign = Math.sign(goal - self(client)[axis]);
+    send(client, { type: 'move', dx: axis === 'x' ? sign : 0, dy: axis === 'y' ? sign : 0 });
+    await delay(145);
+  }
+  throw new Error(`Blocked at ${JSON.stringify(self(client))}, ${axis}=${goal}`);
+}
 function join(code, name, token = '') {
   return new Promise((resolve, reject) => {
-    const client = { name, token, snapshots: [], socket: new WebSocket(`${base.replace('http', 'ws')}/ws/${code}?name=${name}&token=${token}`, { headers: { Origin: origin } }) };
+    const client = { name, token, snapshots: [], ready: new Set(), socket: new WebSocket(`${base.replace('http', 'ws')}/ws/${code}?name=${name}&token=${token}`, { headers: { Origin: origin } }) };
     client.socket.on('message', raw => {
       const message = JSON.parse(raw.toString());
       if (message.type === 'welcome') client.token = message.token;
+      if (message.type === 'taskReady') client.ready.add(message.id);
       if (message.type === 'snapshot') { client.snapshots.push(message); if (client.token) resolve(client); }
     });
     client.socket.on('error', reject);
@@ -35,8 +50,10 @@ try {
   await until(() => clients.every(client => latest(client).preset === 'quick'), 'preset sync');
   send(host, { type: 'start' });
   await until(() => clients.every(client => latest(client).phase === 'playing'), 'ten playing');
+  assert.ok(clients.every(client => latest(client).mapVariant === 'full'), 'Ten players must use all 22 rooms');
   assert.equal(clients.filter(client => latest(client).role === 'impostor').length, 2);
   assert.ok(clients.filter(client => latest(client).role === 'crew').every(client => latest(client).tasks.length === 5));
+  assert.ok(clients.filter(client => latest(client).role === 'crew').every(client => client.snapshots.at(-1).tasks.filter(id => ['archive', 'shield', 'robot', 'water'].includes(id)).length === 2), 'Each crew member should receive two outer-wing tasks');
   assert.ok(clients.every(client => latest(client).players.every(player => !('role' in player))));
   send(host, { type: 'emergency' });
   await until(() => clients.every(client => latest(client).phase === 'meeting'), 'ten in meeting');
@@ -54,7 +71,19 @@ try {
   const again = await join(code, host.name, host.token);
   clients.push(again);
   assert.equal(latest(again).me, oldId);
-  console.log(`PASS: room ${code}, 10 players, 2 hidden impostors, majority meeting and reconnect`);
+  const shieldCrew = clients.find(client => client.socket.readyState === WebSocket.OPEN && latest(client).role === 'crew' && latest(client).tasks.includes('shield'));
+  assert.ok(shieldCrew, 'A crew member must have the shield task');
+  for (const [axis, goal] of [['y', 880], ['x', 2800], ['y', 1170], ['x', 3145]]) await walk(shieldCrew, axis, goal);
+  send(shieldCrew, { type: 'taskStart', id: 'shield' });
+  await until(() => shieldCrew.ready.has('shield'), 'shield task ready');
+  send(shieldCrew, { type: 'taskComplete', id: 'shield' });
+  await delay(150);
+  assert.ok(!latest(shieldCrew).completedTasks.includes('shield'), 'Shield must reject completion without steps');
+  for (const step of [2, 0, 3, 1]) { send(shieldCrew, { type: 'taskStep', id: 'shield', step }); await delay(90); }
+  await delay(1900);
+  send(shieldCrew, { type: 'taskComplete', id: 'shield' });
+  await until(() => latest(shieldCrew).completedTasks.includes('shield'), 'shield task complete');
+  console.log(`PASS: room ${code}, 10 players, full map, shield task, majority meeting and reconnect`);
 } finally {
   for (const client of clients) client.socket.close();
 }

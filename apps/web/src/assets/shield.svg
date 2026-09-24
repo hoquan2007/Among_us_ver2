@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="340" viewBox="0 0 430 340">
+  <defs><radialGradient id="floor"><stop stop-color="#28677a"/><stop offset="1" stop-color="#17364d"/></radialGradient><pattern id="mesh" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M0 0h42v42" fill="none" stroke="#b6f0ec" opacity=".09"/></pattern></defs>
+  <rect width="430" height="340" fill="url(#floor)"/><rect width="430" height="340" fill="url(#mesh)"/>
+  <g fill="none" stroke="#9dece5"><path d="M215 48l121 70v104l-121 70-121-70V118z" opacity=".38" stroke-width="8"/><path d="M215 80l91 53v74l-91 53-91-53v-74z" opacity=".31" stroke-width="4"/><circle cx="215" cy="170" r="50" opacity=".23" stroke-width="4"/></g>
+  <g fill="#b3f2e9" opacity=".5"><circle cx="215" cy="48" r="7"/><circle cx="336" cy="118" r="7"/><circle cx="336" cy="222" r="7"/><circle cx="215" cy="292" r="7"/><circle cx="94" cy="222" r="7"/><circle cx="94" cy="118" r="7"/></g>
+</svg>

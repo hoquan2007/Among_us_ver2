@@ -1,5 +1,13 @@
 # Kế hoạch mở rộng bản đồ và tài nguyên hình ảnh
 
+## Trạng thái triển khai
+
+- Đã mở map 3.600 × 2.400 với 22 phòng cho ván từ bảy người; ván 4–6 người giữ lõi 16 phòng. Biến thể được chốt khi bắt đầu và gửi trong snapshot giao thức v3; phòng cũ không có trường này vẫn dùng lõi.
+- Đã thêm sáu phòng, sáu nền SVG nguyên bản, lớp hành lang có biển/vạch/đèn, 12 chi tiết nhỏ tái sử dụng mỗi phòng, màu và thiết bị đặc trưng; thêm cửa thứ hai cho ba điểm sửa sự cố quan trọng.
+- Đã thêm bốn nhiệm vụ ở cánh mới (Lưu trữ, Lá chắn, Robot, Xử lý nước), một cặp thông hơi; Worker giao hai nhiệm vụ cánh mới cho mỗi phi hành đoàn trong ván đông người và xoay vòng nhiệm vụ lõi.
+- Đã sửa camera, minimap theo tỷ lệ map, giới hạn di chuyển, phạm vi phòng và chỉ vẽ lưới/cảnh trong vùng nhìn thấy. Kiểm tra hình học cho cả hai biến thể, phòng 10 người, nhiệm vụ mới và phá hoại đã qua.
+- Cần đo FPS trên một nhóm máy desktop và theo dõi nhịp chơi thực tế trước khi quyết định thêm chi tiết động hoặc chuyển renderer. Âm thanh theo khu và thanh âm lượng riêng là phần nâng cấp tiếp theo; âm nền hiện có vẫn hoạt động.
+
 ## Hiện trạng và mục tiêu
 
 - Hiện tại: bản đồ 2.800 × 1.800, 16 phòng, tám trạm nhiệm vụ, ba phòng có SVG riêng. Nhiều sàn, tường, hành lang và vật thể được vẽ bằng Canvas mỗi khung hình.

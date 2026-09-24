@@ -1,13 +1,32 @@
 import { useEffect, useRef } from 'react';
-import { DOORS, EMERGENCY, MAP, REACTOR_FIXES, ROOMS, SPEED, STATIONS, VENTS, VIEW, WALLS, collides, hitsRect, type PublicPlayer, type Snapshot } from '../../../packages/protocol/src/index';
+import { DOORS, EMERGENCY, REACTOR_FIXES, ROOMS, SPEED, STATIONS, VENTS, VIEW, WALLS, collides, hitsRect, mapBounds, type PublicPlayer, type Snapshot } from '../../../packages/protocol/src/index';
 import electricalTexture from './assets/electrical.svg?url';
 import reactorTexture from './assets/reactor.svg?url';
 import meetingTexture from './assets/meeting.svg?url';
+import navigationTexture from './assets/navigation.svg?url';
+import archiveTexture from './assets/archive.svg?url';
+import shieldTexture from './assets/shield.svg?url';
+import maintenanceTexture from './assets/maintenance.svg?url';
+import robotTexture from './assets/robot.svg?url';
+import waterTexture from './assets/water.svg?url';
 
 const accent = '#78e7d7';
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
+const corridors = [
+  { x: 470, y: 860, w: 630, h: 120 }, { x: 1700, y: 860, w: 630, h: 120 },
+  { x: 1340, y: 380, w: 120, h: 305 }, { x: 1340, y: 1115, w: 120, h: 325 },
+  { x: 530, y: 390, w: 125, h: 1040 }, { x: 2140, y: 390, w: 125, h: 1040 },
+  { x: 490, y: 1850, w: 2250, h: 110, outer: true },
+  { x: 2770, y: 150, w: 150, h: 1620, outer: true },
+  { x: 1300, y: 1760, w: 200, h: 260, outer: true },
+  { x: 2420, y: 1760, w: 180, h: 260, outer: true }
+] as const;
 const roomTextures = new Map<string, HTMLImageElement>();
-for (const [name, url] of [['PHÒNG ĐIỆN', electricalTexture], ['LÒ PHẢN ỨNG', reactorTexture], ['PHÒNG HỌP', meetingTexture]]) {
+for (const [name, url] of [
+  ['PHÒNG ĐIỆN', electricalTexture], ['LÒ PHẢN ỨNG', reactorTexture], ['PHÒNG HỌP', meetingTexture],
+  ['ĐỊNH VỊ', navigationTexture], ['LƯU TRỮ', archiveTexture], ['LÁ CHẮN', shieldTexture],
+  ['BẢO TRÌ', maintenanceTexture], ['PHÒNG ROBOT', robotTexture], ['XỬ LÝ NƯỚC', waterTexture]
+]) {
   const texture = new Image(); texture.src = url; roomTextures.set(name, texture);
 }
 
@@ -20,6 +39,23 @@ function roomDetails(ctx: CanvasRenderingContext2D, room: (typeof ROOMS)[number]
   }
   ctx.strokeStyle = '#a1e7df1b'; ctx.lineWidth = 2;
   ctx.strokeRect(x + 24, y + 25, w - 48, h - 50);
+  ctx.strokeStyle = '#b6e4e013'; ctx.lineWidth = 1;
+  for (let px = x + 96; px < x + w - 20; px += 96) { ctx.beginPath(); ctx.moveTo(px, y + 28); ctx.lineTo(px, y + h - 28); ctx.stroke(); }
+  for (let py = y + 92; py < y + h - 20; py += 92) { ctx.beginPath(); ctx.moveTo(x + 28, py); ctx.lineTo(x + w - 28, py); ctx.stroke(); }
+  ctx.fillStyle = '#8be0d932';
+  for (const bx of [x + 30, x + w - 38]) for (const by of [y + 30, y + h - 38]) { ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI * 2); ctx.fill(); }
+  // Reusable small props give every room detail without adding large image downloads.
+  for (let i = 0; i < 12; i++) {
+    const px = x + 43 + i % 6 * (w - 86) / 5;
+    const py = i < 6 ? y + 66 : y + h - 48;
+    const kind = i % 6;
+    ctx.fillStyle = kind === 0 ? '#e6bd70' : kind === 3 ? '#72d4c6' : '#4d7887';
+    if (kind === 0 || kind === 3) { ctx.beginPath(); ctx.arc(px, py, 5 + Math.sin(time * .002 + i) * .5, 0, Math.PI * 2); ctx.fill(); }
+    else if (kind === 1) { ctx.fillRect(px - 13, py - 4, 26, 8); ctx.fillStyle = '#a3e8e8'; ctx.fillRect(px - 8, py - 2, 10, 2); }
+    else if (kind === 2) { ctx.fillRect(px - 10, py - 8, 20, 16); ctx.strokeStyle = '#a9d5d288'; ctx.strokeRect(px - 7, py - 5, 14, 10); }
+    else if (kind === 4) { ctx.fillRect(px - 14, py - 3, 28, 6); ctx.fillStyle = '#acd4d47a'; for (let n = -8; n <= 8; n += 8) ctx.fillRect(px + n, py - 7, 2, 14); }
+    else { ctx.strokeStyle = '#e7bd75b0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px - 12, py + 6); ctx.lineTo(px - 3, py - 6); ctx.moveTo(px, py + 6); ctx.lineTo(px + 9, py - 6); ctx.stroke(); }
+  }
   const box = (bx: number, by: number, bw: number, bh: number, color = '#254b5b') => {
     ctx.fillStyle = '#07182488'; ctx.fillRect(bx + 5, by + 6, bw, bh);
     ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
@@ -121,6 +157,38 @@ function roomDetails(ctx: CanvasRenderingContext2D, room: (typeof ROOMS)[number]
       ctx.fillStyle = '#c4e6ef'; ctx.fillRect(x + 83 + i * 174, y + 183, 86, 9);
       ctx.fillStyle = '#f5c981'; ctx.fillRect(x + 83 + i * 174, y + 214, 45, 7);
     }
+  } else if (name === 'ĐỊNH VỊ') {
+    ctx.strokeStyle = '#93d7ff88'; ctx.lineWidth = 3;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x + w / 2, y + 175, 45 + i * 38, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.strokeStyle = '#c8f7ff'; ctx.beginPath(); ctx.moveTo(x + w / 2, y + 175); ctx.lineTo(x + w / 2 + Math.cos(time * .0005) * 122, y + 175 + Math.sin(time * .0005) * 122); ctx.stroke();
+    for (let i = 0; i < 3; i++) screen(x + 40 + i * 115, y + 65, 84, 46, '#85c6ef');
+  } else if (name === 'LƯU TRỮ') {
+    for (let i = 0; i < 4; i++) { box(x + 35 + i * 96, y + 65, 70, 105, '#35576d'); box(x + 35 + i * 96, y + 205, 70, 70, '#2c5164'); }
+    ctx.fillStyle = '#a9f3db'; for (let i = 0; i < 8; i++) ctx.fillRect(x + 57 + i % 4 * 96, y + 94 + Math.floor(i / 4) * 140, 22, 5);
+  } else if (name === 'LÁ CHẮN') {
+    ctx.fillStyle = '#6ad6e533'; ctx.beginPath(); ctx.arc(x + w / 2, y + 170, 105, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#9af2eb'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(x + w / 2, y + 170, 91, time * .0004, time * .0004 + Math.PI * 1.6); ctx.stroke();
+    for (let i = 0; i < 4; i++) screen(x + 30 + i * 100, y + 65, 76, 43, i % 2 ? '#7de7e0' : '#9dc4ff');
+  } else if (name === 'BẢO TRÌ') {
+    for (let i = 0; i < 4; i++) { box(x + 36 + i * 97, y + 70, 72, 66, i % 2 ? '#5e6451' : '#355b66'); box(x + 36 + i * 97, y + 204, 72, 45, '#4a5d6b'); }
+    ctx.strokeStyle = '#e9c57d'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x + 55, y + 176); ctx.lineTo(x + w - 55, y + 176); ctx.stroke();
+    for (let i = 0; i < 7; i++) { ctx.fillStyle = i % 2 ? '#f5cb7d' : '#203b4b'; ctx.fillRect(x + 60 + i * 48, y + 166, 25, 20); }
+  } else if (name === 'PHÒNG ROBOT') {
+    for (let i = 0; i < 3; i++) {
+      const cx = x + 98 + i * 120;
+      box(cx - 34, y + 83, 68, 97, '#3c6371');
+      ctx.fillStyle = '#b4eff1'; ctx.beginPath(); ctx.arc(cx, y + 113, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#68c6d5'; ctx.fillRect(cx - 23, y + 144, 46, 6);
+    }
+    screen(x + 130, y + 228, 180, 52, '#8be9d6');
+  } else if (name === 'XỬ LÝ NƯỚC') {
+    for (let i = 0; i < 3; i++) {
+      const cx = x + 95 + i * 120;
+      ctx.fillStyle = '#256b8599'; ctx.beginPath(); ctx.arc(cx, y + 155, 47, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#a6e7ee'; ctx.lineWidth = 5; ctx.stroke();
+      ctx.fillStyle = '#b4f3ff77'; ctx.fillRect(cx - 24, y + 155 + Math.sin(time * .001 + i) * 4, 48, 21);
+    }
+    ctx.strokeStyle = '#5facc0'; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(x + 55, y + 248); ctx.lineTo(x + w - 55, y + 248); ctx.stroke();
   }
   ctx.restore();
 }
@@ -174,9 +242,10 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
     let frame = 0;
     let last = performance.now();
     const rendered = new Map<string, { x: number; y: number; lastX: number; lastY: number; phase: number; moving: boolean }>();
-    const camera = { x: (MAP.width - VIEW.width) / 2, y: (MAP.height - VIEW.height) / 2 };
+    const camera = { x: (mapBounds(gameRef.current.mapVariant).width - VIEW.width) / 2, y: (mapBounds(gameRef.current.mapVariant).height - VIEW.height) / 2 };
     const draw = (time: number) => {
       const g = gameRef.current;
+      const bounds = mapBounds(g.mapVariant);
       const now = Date.now() + clockOffset.current;
       const dt = Math.min(48, time - last); last = time;
       const targets = new Set(g.players.map(p => p.id));
@@ -192,9 +261,9 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
           const dy = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup'));
           const magnitude = Math.hypot(dx, dy) || 1;
           const vx = dx / magnitude * SPEED * dt / 1000, vy = dy / magnitude * SPEED * dt / 1000;
-          const blocked = (x: number, y: number) => p.alive && (collides(x, y) || (g.sabotage === 'doors' && now < g.doorsUntil && DOORS.some(door => hitsRect(x, y, door))));
-          if (!blocked(r.x + vx, r.y)) r.x = clamp(r.x + vx, 24, MAP.width - 24);
-          if (!blocked(r.x, r.y + vy)) r.y = clamp(r.y + vy, 24, MAP.height - 24);
+          const blocked = (x: number, y: number) => p.alive && (collides(x, y, g.mapVariant) || (g.sabotage === 'doors' && now < g.doorsUntil && DOORS.some(door => hitsRect(x, y, door))));
+          if (!blocked(r.x + vx, r.y)) r.x = clamp(r.x + vx, 24, bounds.width - 24);
+          if (!blocked(r.x, r.y + vy)) r.y = clamp(r.y + vy, 24, bounds.height - 24);
           const correction = dx || dy ? .018 : .13;
           r.x += (p.x - r.x) * correction; r.y += (p.y - r.y) * correction;
         } else {
@@ -208,8 +277,8 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       }
       const me = rendered.get(g.me);
       if (me) {
-        camera.x += (clamp(me.x - VIEW.width / 2, 0, MAP.width - VIEW.width) - camera.x) * (1 - Math.exp(-dt / 150));
-        camera.y += (clamp(me.y - VIEW.height / 2, 0, MAP.height - VIEW.height) - camera.y) * (1 - Math.exp(-dt / 150));
+        camera.x += (clamp(me.x - VIEW.width / 2, 0, bounds.width - VIEW.width) - camera.x) * (1 - Math.exp(-dt / 150));
+        camera.y += (clamp(me.y - VIEW.height / 2, 0, bounds.height - VIEW.height) - camera.y) * (1 - Math.exp(-dt / 150));
       }
       const onScreen = (x: number, y: number, w = 0, h = 0, pad = 64) =>
         x + w >= camera.x - pad && x <= camera.x + VIEW.width + pad &&
@@ -218,10 +287,32 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       ctx.clearRect(0, 0, VIEW.width, VIEW.height);
       ctx.fillStyle = '#07121e'; ctx.fillRect(0, 0, VIEW.width, VIEW.height);
       ctx.save(); ctx.translate(-camera.x, -camera.y);
-      ctx.fillStyle = '#0c2030'; ctx.fillRect(0, 0, MAP.width, MAP.height);
-      ctx.fillStyle = '#153448';
-      ctx.fillRect(470, 865, 630, 110); ctx.fillRect(1700, 865, 630, 110);
-      ctx.fillRect(1350, 380, 100, 305); ctx.fillRect(1350, 1115, 100, 325);
+      ctx.fillStyle = '#0c2030'; ctx.fillRect(0, 0, bounds.width, bounds.height);
+      for (const corridor of corridors) {
+        if ('outer' in corridor && g.mapVariant !== 'full') continue;
+        if (!onScreen(corridor.x, corridor.y, corridor.w, corridor.h)) continue;
+        const vertical = corridor.h > corridor.w;
+        ctx.fillStyle = 'rgba(29, 68, 82, .74)'; ctx.fillRect(corridor.x, corridor.y, corridor.w, corridor.h);
+        ctx.strokeStyle = '#75c9c470'; ctx.lineWidth = 3; ctx.strokeRect(corridor.x + 5, corridor.y + 5, corridor.w - 10, corridor.h - 10);
+        ctx.fillStyle = '#70d3c032';
+        if (vertical) {
+          ctx.fillRect(corridor.x + 18, corridor.y, 5, corridor.h);
+          ctx.fillRect(corridor.x + corridor.w - 23, corridor.y, 5, corridor.h);
+          for (let y = corridor.y + 30; y < corridor.y + corridor.h - 15; y += 80) {
+            if (!onScreen(corridor.x, y, corridor.w, 20)) continue;
+            ctx.fillStyle = '#b6e9dc38'; ctx.fillRect(corridor.x + 28, y, corridor.w - 56, 2);
+            ctx.fillStyle = '#f1d083'; ctx.fillRect(corridor.x + 10, y - 4, 8, 8); ctx.fillRect(corridor.x + corridor.w - 18, y - 4, 8, 8);
+          }
+        } else {
+          ctx.fillRect(corridor.x, corridor.y + 18, corridor.w, 5);
+          ctx.fillRect(corridor.x, corridor.y + corridor.h - 23, corridor.w, 5);
+          for (let x = corridor.x + 30; x < corridor.x + corridor.w - 15; x += 80) {
+            if (!onScreen(x, corridor.y, 20, corridor.h)) continue;
+            ctx.fillStyle = '#b6e9dc38'; ctx.fillRect(x, corridor.y + 28, 2, corridor.h - 56);
+            ctx.fillStyle = '#f1d083'; ctx.fillRect(x - 4, corridor.y + 10, 8, 8); ctx.fillRect(x - 4, corridor.y + corridor.h - 18, 8, 8);
+          }
+        }
+      }
       ctx.fillStyle = '#25465b';
       for (const [px, py] of [[600, 900], [2060, 900], [1400, 490], [1400, 1300]]) {
         ctx.beginPath(); ctx.arc(px, py, 37, 0, Math.PI * 2); ctx.fill();
@@ -229,19 +320,20 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillStyle = '#25465b';
       }
       ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 1;
-      for (let x = 0; x <= MAP.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, MAP.height); ctx.stroke(); }
-      for (let y = 0; y <= MAP.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(MAP.width, y); ctx.stroke(); }
+      for (let x = Math.floor(camera.x / 40) * 40; x <= Math.min(bounds.width, camera.x + VIEW.width + 40); x += 40) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + VIEW.height); ctx.stroke(); }
+      for (let y = Math.floor(camera.y / 40) * 40; y <= Math.min(bounds.height, camera.y + VIEW.height + 40); y += 40) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + VIEW.width, y); ctx.stroke(); }
       ctx.setLineDash([23, 19]); ctx.strokeStyle = '#7ec7c32b'; ctx.lineWidth = 4;
       for (const [ax, ay, bx, by] of [[470, 920, 1100, 920], [1700, 920, 2330, 920], [1400, 380, 1400, 685], [1400, 1115, 1400, 1440]]) {
         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
       }
       ctx.setLineDash([]);
       ctx.strokeStyle = '#58a8bc22'; ctx.lineWidth = 2;
-      ctx.strokeRect(23, 23, MAP.width - 46, MAP.height - 46);
+      ctx.strokeRect(23, 23, bounds.width - 46, bounds.height - 46);
       for (const room of ROOMS) {
+        if (room.outer && g.mapVariant !== 'full') continue;
         if (!onScreen(room.x, room.y, room.w, room.h)) continue;
         const meeting = room.kind === 'meeting';
-        const hue = room.name === 'NHÀ KÍNH' ? '#284a3c' : room.name === 'LÒ PHẢN ỨNG' ? '#274557' : room.name === 'KHO NHIÊN LIỆU' ? '#4c4332' : room.name === 'Y TẾ' ? '#31515a' : room.name === 'KHO HÀNG' || room.name === 'KHOANG HÀNG' ? '#3d4351' : room.name === 'KHÔNG KHÍ' ? '#214953' : '#152d3c';
+        const hue = room.name === 'NHÀ KÍNH' ? '#284a3c' : room.name === 'LÒ PHẢN ỨNG' ? '#274557' : room.name === 'KHO NHIÊN LIỆU' ? '#4c4332' : room.name === 'Y TẾ' ? '#31515a' : room.name === 'KHO HÀNG' || room.name === 'KHOANG HÀNG' ? '#3d4351' : room.name === 'KHÔNG KHÍ' ? '#214953' : room.name === 'ĐỊNH VỊ' ? '#253f60' : room.name === 'LƯU TRỮ' ? '#354e67' : room.name === 'LÁ CHẮN' ? '#225268' : room.name === 'BẢO TRÌ' ? '#514d3e' : room.name === 'PHÒNG ROBOT' ? '#285367' : room.name === 'XỬ LÝ NƯỚC' ? '#1b5261' : '#152d3c';
         ctx.fillStyle = meeting ? '#173d4a' : hue;
         ctx.fillRect(room.x, room.y, room.w, room.h);
         const texture = roomTextures.get(room.name);
@@ -279,6 +371,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         }
       }
       for (const station of STATIONS) {
+        if ('outer' in station && g.mapVariant !== 'full') continue;
         if (!onScreen(station.x, station.y, 0, 0, 95)) continue;
         const active = g.tasks.includes(station.id) && !g.completedTasks.includes(station.id);
         const pulse = active ? 3 + Math.sin(time * .004) * 2 : 0;
@@ -292,6 +385,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillText(station.name, station.x, station.y + 48);
       }
       for (const vent of VENTS) {
+        if ('outer' in vent && g.mapVariant !== 'full') continue;
         if (!onScreen(vent.x, vent.y)) continue;
         ctx.fillStyle = '#101e2a'; ctx.beginPath(); ctx.roundRect(vent.x - 23, vent.y - 15, 46, 30, 6); ctx.fill();
         ctx.strokeStyle = '#789eac'; ctx.lineWidth = 2; ctx.stroke();
@@ -342,10 +436,11 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       }
       ctx.restore();
       // A small minimap keeps the wide ship readable without hiding the play field.
-      const scale = 148 / MAP.width, ox = VIEW.width - 171, oy = 23;
-      ctx.fillStyle = '#06131edc'; ctx.beginPath(); ctx.roundRect(ox - 10, oy - 10, 168, 115, 12); ctx.fill();
+      const scale = Math.min(148 / bounds.width, 98 / bounds.height), ox = VIEW.width - 171, oy = 23;
+      ctx.fillStyle = '#06131edc'; ctx.beginPath(); ctx.roundRect(ox - 10, oy - 10, 168, 118, 12); ctx.fill();
       ctx.strokeStyle = '#7daeb056'; ctx.stroke();
       for (const room of ROOMS) {
+        if (room.outer && g.mapVariant !== 'full') continue;
         ctx.fillStyle = room.kind === 'meeting' ? '#3b968f' : '#30586c';
         ctx.fillRect(ox + room.x * scale, oy + room.y * scale, room.w * scale, room.h * scale);
       }
