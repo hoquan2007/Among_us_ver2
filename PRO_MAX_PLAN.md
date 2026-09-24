@@ -1,5 +1,7 @@
 # Kế hoạch nâng cấp Starship Suspects lên bản “Pro Max”
 
+Kế hoạch riêng cho bố cục 22 phòng, tài nguyên đồ họa, hiệu năng và phát hành nằm trong [MAP_EXPANSION_PLAN.md](MAP_EXPANSION_PLAN.md).
+
 ## Đợt nâng cấp kế tiếp sau bản hiện tại
 
 Ưu tiên theo thứ tự dưới đây. Mỗi mốc có thể phát hành độc lập lên Vercel và Cloudflare để người chơi dùng bản ổn định trong lúc phát triển.
