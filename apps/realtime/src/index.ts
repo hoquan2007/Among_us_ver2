@@ -13,7 +13,7 @@ interface Player {
   tasks: string[]; completedTasks: string[]; taskStarted: Record<string, number>;
   taskSteps: Record<string, number[]>;
   killReadyAt: number; sabotageReadyAt: number; emergencyUsed: number;
-  lastMoveAt: number; lastMessageAt: number; votes: string | null | undefined;
+  lastMoveAt: number; votes: string | null | undefined;
 }
 interface Meeting {
   stage: MeetingStage; endsAt: number; reporter: string; reason: string;
@@ -34,7 +34,7 @@ const roomCode = () => {
   return Array.from(random, n => chars[n % chars.length]).join('');
 };
 const cleanName = (input: string) => input.trim().replace(/[\x00-\x1f<>]/g, '').slice(0, 16) || 'Phi hành gia';
-const REACTOR_WINDOW = 20_000;
+const REACTOR_WINDOW = 30_000;
 const SPAWNS = [
   [1340, 850], [1460, 850], [1340, 970], [1460, 970], [1240, 850],
   [1560, 850], [1240, 970], [1560, 970], [1340, 1040], [1460, 1040]
@@ -106,7 +106,7 @@ export class GameRoom extends DurableObject<Env> {
       const color = COLORS.find(c => !game.players.some(p => p.color === c)) || COLORS[game.players.length % COLORS.length];
       player = { id, token: crypto.randomUUID(), name, color, x: MAP.width / 2, y: MAP.height / 2,
         alive: true, connected: true, disconnectedAt: 0, role: null, tasks: [], completedTasks: [], taskStarted: {}, taskSteps: {},
-        killReadyAt: 0, sabotageReadyAt: 0, emergencyUsed: 0, lastMoveAt: Date.now(), lastMessageAt: 0, votes: undefined };
+        killReadyAt: 0, sabotageReadyAt: 0, emergencyUsed: 0, lastMoveAt: Date.now(), votes: undefined };
       game.players.push(player);
       if (!game.host) game.host = id;
     } else {
@@ -137,8 +137,6 @@ export class GameRoom extends DurableObject<Env> {
     try { message = JSON.parse(data) as ClientMessage; } catch { return; }
     if (!message || typeof message.type !== 'string') return;
     const now = Date.now();
-    if (now - player.lastMessageAt < 20 && !['taskStart', 'taskStep', 'taskComplete'].includes(message.type)) return;
-    player.lastMessageAt = now;
     const error = await this.handle(player, message, now);
     if (error) this.send(ws, { type: 'error', message: error });
     else if (message.type === 'taskStart') this.send(ws, { type: 'taskReady', id: message.id });
@@ -305,6 +303,7 @@ export class GameRoom extends DurableObject<Env> {
       } else if (g.sabotage === 'reactor' && (m.point === 0 || m.point === 1) && distance(p, REACTOR_FIXES[m.point]) <= INTERACT_RANGE) {
         g.reactorFixers ??= {};
         for (const key of Object.keys(g.reactorFixers)) if (now - g.reactorFixers[Number(key)].at >= REACTOR_WINDOW) delete g.reactorFixers[Number(key)];
+        if (g.reactorFixers[m.point]) return;
         const other = g.reactorFixers[m.point === 0 ? 1 : 0];
         if (other?.id === p.id) return 'Cần hai người sửa lò phản ứng.';
         g.reactorFixers[m.point] = { id: p.id, at: now };

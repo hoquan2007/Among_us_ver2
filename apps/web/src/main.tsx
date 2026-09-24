@@ -11,6 +11,7 @@ import { musicEnabled, setMusicActive, setMusicEnabled, unlockMusic } from './am
 
 const apiBase = (import.meta.env.VITE_REALTIME_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '');
 const wsBase = apiBase.replace(/^http/, 'ws');
+const reactorRooms = ['LÒ PHẢN ỨNG', 'QUAN SÁT'] as const;
 
 function send(ws: WebSocket | null, message: ClientMessage) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -210,7 +211,7 @@ function App() {
   const interact = () => {
     if (!snapshot || snapshot.phase !== 'playing') return;
     if (nearBody && me?.alive) send(socket.current, { type: 'report', body: nearBody.id });
-    else if (snapshot.sabotage === 'reactor' && nearReactor >= 0) send(socket.current, { type: 'fix', point: nearReactor });
+    else if (snapshot.sabotage === 'reactor' && nearReactor >= 0 && me?.alive && snapshot.role === 'crew' && !snapshot.reactorFixed.includes(nearReactor)) send(socket.current, { type: 'fix', point: nearReactor });
     else if (snapshot.sabotage === 'lights' && nearStation?.id === 'wires') send(socket.current, { type: 'fix' });
     else if (nearStation) openTask(nearStation.id);
     else if (nearEmergency && me?.alive && !snapshot.emergencyUsed) send(socket.current, { type: 'emergency' });
@@ -264,10 +265,10 @@ function App() {
         <div className="map-footer"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> DI CHUYỂN</span><span><kbd>E</kbd> TƯƠNG TÁC</span><span>{snapshot.role === 'impostor' ? <><kbd>Q</kbd> HẠ GỤC · <kbd>V</kbd> THÔNG HƠI</> : 'KHÁM PHÁ CÁC PHÒNG ĐỂ LÀM NHIỆM VỤ'}</span></div>
       </section>
       <aside className="sidebar"><div className={`role-card ${snapshot.role === 'impostor' ? 'impostor' : ''}`}><div className="eyebrow">VAI TRÒ BÍ MẬT</div><h3>{snapshot.role === 'impostor' ? 'KẺ PHÁ HOẠI' : 'PHI HÀNH ĐOÀN'}</h3><p>{snapshot.role === 'impostor' ? 'Hạ gục, phá hoại và đánh lạc hướng đoàn.' : 'Làm nhiệm vụ và tìm ra kẻ phá hoại.'}</p>{!me?.alive && <div className="dead-badge">BẠN ĐÃ CHẾT · {snapshot.role === 'crew' ? 'TIẾP TỤC LÀM NHIỆM VỤ' : 'THEO DÕI TRẬN'}</div>}</div>
-        {snapshot.sabotage && <div className="alert sabotage-alert"><strong>{snapshot.sabotage === 'reactor' ? `⚠ LÒ PHẢN ỨNG · ${seconds(snapshot.reactorDeadline)}s` : snapshot.sabotage === 'lights' ? '⚠ MẤT ĐIỆN' : `⚠ KHÓA CỬA · ${seconds(snapshot.doorsUntil)}s`}</strong><span>{snapshot.sabotage === 'reactor' ? `Hai phi hành gia sửa đồng thời tại hai đầu tàu · ${snapshot.reactorFixed.length}/2 trạm${snapshot.reactorWindowEndsAt ? ` · giữ nhịp ${seconds(snapshot.reactorWindowEndsAt)}s` : ''}` : snapshot.sabotage === 'lights' ? 'Tìm bảng điện trong PHÒNG ĐIỆN để khôi phục tầm nhìn.' : 'Các lối vào phòng bị khóa tạm thời.'}</span></div>}
+        {snapshot.sabotage && <div className="alert sabotage-alert"><strong>{snapshot.sabotage === 'reactor' ? `⚠ LÒ PHẢN ỨNG · ${seconds(snapshot.reactorDeadline)}s` : snapshot.sabotage === 'lights' ? '⚠ MẤT ĐIỆN' : `⚠ KHÓA CỬA · ${seconds(snapshot.doorsUntil)}s`}</strong><span>{snapshot.sabotage === 'reactor' ? `Cần hai người khác nhau kích hoạt hai trạm: ${reactorRooms.map((room, index) => `${room} ${snapshot.reactorFixed.includes(index) ? '✓' : '○'}`).join(' · ')}${snapshot.reactorWindowEndsAt ? ` · Trạm còn lại cần hoàn tất trong ${seconds(snapshot.reactorWindowEndsAt)}s` : ''}` : snapshot.sabotage === 'lights' ? 'Tìm bảng điện trong PHÒNG ĐIỆN để khôi phục tầm nhìn.' : 'Các lối vào phòng bị khóa tạm thời.'}</span></div>}
         <div className="panel"><h3>HÀNH ĐỘNG</h3><div className="actions">
           {nearBody && me?.alive && <button className="danger" onClick={() => send(socket.current, { type: 'report', body: nearBody.id })}>Báo cáo xác <kbd>E</kbd></button>}
-          {snapshot.sabotage === 'reactor' && nearReactor >= 0 && me?.alive && snapshot.role === 'crew' && <button onClick={() => send(socket.current, { type: 'fix', point: nearReactor })}>Sửa lò phản ứng <kbd>E</kbd></button>}
+          {snapshot.sabotage === 'reactor' && nearReactor >= 0 && me?.alive && snapshot.role === 'crew' && <button disabled={snapshot.reactorFixed.includes(nearReactor)} onClick={() => send(socket.current, { type: 'fix', point: nearReactor })}>{snapshot.reactorFixed.includes(nearReactor) ? 'Đã kích hoạt · chờ trạm còn lại' : `Kích hoạt trạm ${reactorRooms[nearReactor]}`} <kbd>E</kbd></button>}
           {snapshot.sabotage === 'lights' && nearStation?.id === 'wires' && snapshot.role === 'crew' && me?.alive && <button onClick={() => send(socket.current, { type: 'fix' })}>Sửa đèn <kbd>E</kbd></button>}
           {nearStation && snapshot.role === 'crew' && !snapshot.completedTasks.includes(nearStation.id) && <button onClick={() => openTask(nearStation.id)}>Làm: {nearStation.name} <kbd>E</kbd></button>}
           {nearEmergency && me?.alive && !snapshot.emergencyUsed && <button onClick={() => send(socket.current, { type: 'emergency' })}>Họp khẩn cấp <kbd>E</kbd></button>}

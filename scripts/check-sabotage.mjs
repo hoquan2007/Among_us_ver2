@@ -58,9 +58,16 @@ try {
   send(impostor, { type: 'sabotage', kind: 'reactor' });
   await until(() => latest(impostor).sabotage === 'reactor', 'reactor on');
   assert.ok(latest(impostor).reactorDeadline - Date.now() > 80_000);
+  // A repair pressed immediately after movement must not be discarded.
+  send(crew[0], { type: 'move', dx: 0, dy: 0 });
   send(crew[0], { type: 'fix', point: 0 });
   await until(() => latest(impostor).reactorFixed.includes(0), 'first reactor console');
-  assert.ok(latest(impostor).reactorWindowEndsAt > Date.now());
+  const firstWindowEnd = latest(impostor).reactorWindowEndsAt;
+  assert.ok(firstWindowEnd - Date.now() > 25_000);
+  send(crew[0], { type: 'fix', point: 0 });
+  await delay(200);
+  assert.equal(latest(impostor).reactorWindowEndsAt, firstWindowEnd, 'Repeated activation must not restart the window');
+  send(crew[1], { type: 'move', dx: 0, dy: 0 });
   send(crew[1], { type: 'fix', point: 1 });
   await until(() => latest(impostor).sabotage === null, 'reactor fixed');
   console.log('PASS: reactor, two distinct crew at opposite consoles');

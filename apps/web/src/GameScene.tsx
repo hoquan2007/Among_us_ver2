@@ -300,9 +300,10 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       ctx.fillStyle = '#f06472'; ctx.beginPath(); ctx.arc(EMERGENCY.x, EMERGENCY.y, 22, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#ffd3cb'; ctx.lineWidth = 4; ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '900 11px system-ui'; ctx.fillText('HỌP', EMERGENCY.x, EMERGENCY.y + 4);
-      if (g.sabotage === 'reactor') for (const point of REACTOR_FIXES) {
-        ctx.fillStyle = '#f0525a'; ctx.beginPath(); ctx.arc(point.x, point.y, 27 + Math.sin(time * .008) * 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = '800 23px system-ui'; ctx.fillText('!', point.x, point.y + 8);
+      if (g.sabotage === 'reactor') for (const [index, point] of REACTOR_FIXES.entries()) {
+        const fixed = g.reactorFixed.includes(index);
+        ctx.fillStyle = fixed ? '#36c99b' : '#f0525a'; ctx.beginPath(); ctx.arc(point.x, point.y, 27 + Math.sin(time * .008) * 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = '800 23px system-ui'; ctx.fillText(fixed ? '✓' : '!', point.x, point.y + 8);
       }
       for (const body of g.bodies) {
         if (!onScreen(body.x, body.y)) continue;
@@ -352,8 +353,8 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         if (!g.tasks.includes(station.id) || g.completedTasks.includes(station.id)) continue;
         ctx.fillStyle = '#8effd7'; ctx.beginPath(); ctx.arc(ox + station.x * scale, oy + station.y * scale, 2.7, 0, Math.PI * 2); ctx.fill();
       }
-      if (g.sabotage === 'reactor') for (const point of REACTOR_FIXES) {
-        ctx.fillStyle = '#ff727d'; ctx.beginPath(); ctx.arc(ox + point.x * scale, oy + point.y * scale, 4, 0, Math.PI * 2); ctx.fill();
+      if (g.sabotage === 'reactor') for (const [index, point] of REACTOR_FIXES.entries()) {
+        ctx.fillStyle = g.reactorFixed.includes(index) ? '#36c99b' : '#ff727d'; ctx.beginPath(); ctx.arc(ox + point.x * scale, oy + point.y * scale, 4, 0, Math.PI * 2); ctx.fill();
       }
       if (g.sabotage === 'lights') {
         const point = STATIONS[0]; ctx.fillStyle = '#ff727d'; ctx.beginPath(); ctx.arc(ox + point.x * scale, oy + point.y * scale, 4, 0, Math.PI * 2); ctx.fill();

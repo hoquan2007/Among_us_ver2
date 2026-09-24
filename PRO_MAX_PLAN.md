@@ -1,5 +1,18 @@
 # Kế hoạch nâng cấp Starship Suspects lên bản “Pro Max”
 
+## Đợt nâng cấp kế tiếp sau bản hiện tại
+
+Ưu tiên theo thứ tự dưới đây. Mỗi mốc có thể phát hành độc lập lên Vercel và Cloudflare để người chơi dùng bản ổn định trong lúc phát triển.
+
+| Ưu tiên | Việc làm | Điều kiện hoàn thành |
+| --- | --- | --- |
+| P0 — tương tác tin cậy | Loại bỏ tình trạng lệnh sửa bị rơi ngay sau di chuyển; làm trạm lò phản ứng giữ trạng thái trong 30 giây, có chỉ dẫn hai phòng và trạng thái rõ trên HUD/minimap; kiểm tra lại ba phá hoại. | Hai người ở hai trạm sửa được ngay cả khi vừa di chuyển; nhấn nhiều lần không kéo dài cửa sổ; bài kiểm thử tự động qua. |
+| P1 — hoàn thiện ván chơi | Thêm chỉ đường tới trạm khẩn cấp bằng mũi tên ngoài màn hình; hướng dẫn ngắn trong sảnh; thông báo âm thanh và hình ảnh khi sửa/thất bại; chỉ số ping và trạng thái kết nối lại. | Người chơi mới xử lý được phá hoại và hiểu nguyên nhân thất bại mà không cần giải thích qua chat. |
+| P2 — nội dung có chiều sâu | Thiết kế oxy và liên lạc với cơ chế sửa khác nhau, hai nhiệm vụ mới, camera an ninh có giới hạn tầm nhìn; bổ sung tùy chọn host nhưng giới hạn giá trị ở Worker. | Mỗi cơ chế có luật, giao diện, đường đi hợp lệ và bài kiểm thử nhiều người. |
+| P3 — bản đồ và hoạt ảnh | Hoàn thành bộ art thống nhất cho 16 phòng, sprite nhân vật 8 hướng và hiệu ứng tương tác; đo hiệu năng rồi chuyển riêng phần vẽ cảnh sang renderer WebGL nếu Canvas không đạt mục tiêu. | 60 FPS ở 1080p trên máy mục tiêu, 10 người di chuyển không giật, hình ảnh không che điểm tương tác. |
+
+Giữ hạ tầng hiện có và không thêm tài khoản, lưu trữ lịch sử dài hạn hoặc dịch vụ trả phí trong đợt này. Trước mỗi lần triển khai, chạy kiểm tra TypeScript, build frontend và bài kiểm thử WebSocket nhiều người; sau đó thử trực tiếp trên website production.
+
 ## Điểm xuất phát
 
 Game hiện chạy trên desktop bằng React, Vite và Canvas 2D; mỗi phòng dùng một Cloudflare Durable Object để xử lý WebSocket. Tàu có 16 phòng, 8 nhiệm vụ, 3 phá hoại, họp và bỏ phiếu, tối đa 10 người. Website tĩnh ở Vercel.
