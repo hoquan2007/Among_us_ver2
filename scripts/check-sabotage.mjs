@@ -15,10 +15,14 @@ async function until(test, label, timeout = 45_000) {
 }
 async function walk(c, axis, goal) {
   for (let i = 0; i < 110; i++) {
-    if (Math.abs(self(c)[axis] - goal) < 23) return;
+    if (Math.abs(self(c)[axis] - goal) < 16) {
+      await delay(350);
+      if (Math.abs(self(c)[axis] - goal) < 20) return;
+      continue;
+    }
     const direction = Math.sign(goal - self(c)[axis]);
     send(c, { type: 'move', dx: axis === 'x' ? direction : 0, dy: axis === 'y' ? direction : 0 });
-    await delay(135);
+    await delay(145);
   }
   throw new Error(`Movement blocked at ${JSON.stringify(self(c))}, goal ${axis}=${goal}`);
 }
@@ -48,7 +52,7 @@ try {
 
   // Place two crew at the remote reactor controls before the alarm.
   const toSide = async (c, side) => {
-    await walk(c, 'y', 920);
+    await walk(c, 'y', 880);
     await walk(c, 'x', side === 'left' ? 600 : 2200);
     await walk(c, 'y', 690);
     await walk(c, 'x', side === 'left' ? 255 : 2545);
