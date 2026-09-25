@@ -226,7 +226,7 @@ function astronaut(ctx: CanvasRenderingContext2D, p: PublicPlayer, x: number, y:
   ctx.restore();
 }
 
-export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInteract: () => void; pressed: { current: Set<string> } }) {
+export function GameScene({ game, onInteract, pressed, touchDirection }: { game: Snapshot; onInteract: () => void; pressed: { current: Set<string> }; touchDirection: { current: { dx: number; dy: number } } }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef(game);
   const clockOffset = useRef(0);
@@ -239,10 +239,27 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
   useEffect(() => {
     const canvas = ref.current, ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
+    const view: { width: number; height: number; scale: number } = { width: VIEW.width, height: VIEW.height, scale: 2 };
+    const resize = () => {
+      const frame = canvas.parentElement;
+      if (!frame) return;
+      const compact = matchMedia('(max-width: 900px)').matches;
+      const width = Math.max(1, frame.clientWidth);
+      const height = compact ? Math.max(1, frame.clientHeight) : width * VIEW.height / VIEW.width;
+      view.width = compact ? (width > height ? 900 : 520) : VIEW.width;
+      view.height = compact ? Math.round(view.width * height / width) : VIEW.height;
+      view.scale = compact ? Math.min(devicePixelRatio || 1, 1.5) : 2;
+      canvas.width = Math.round(view.width * view.scale);
+      canvas.height = Math.round(view.height * view.scale);
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas.parentElement!);
+    window.addEventListener('resize', resize);
+    resize();
     let frame = 0;
     let last = performance.now();
     const rendered = new Map<string, { x: number; y: number; lastX: number; lastY: number; phase: number; moving: boolean }>();
-    const camera = { x: (mapBounds(gameRef.current.mapVariant).width - VIEW.width) / 2, y: (mapBounds(gameRef.current.mapVariant).height - VIEW.height) / 2 };
+    const camera = { x: (mapBounds(gameRef.current.mapVariant).width - view.width) / 2, y: (mapBounds(gameRef.current.mapVariant).height - view.height) / 2 };
     const draw = (time: number) => {
       const g = gameRef.current;
       const bounds = mapBounds(g.mapVariant);
@@ -257,8 +274,8 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         if (jump) { r.x = p.x; r.y = p.y; }
         else if (p.id === g.me && g.phase === 'playing') {
           const keys = pressed.current;
-          const dx = Number(keys.has('d') || keys.has('arrowright')) - Number(keys.has('a') || keys.has('arrowleft'));
-          const dy = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup'));
+          const dx = Number(keys.has('d') || keys.has('arrowright')) - Number(keys.has('a') || keys.has('arrowleft')) || touchDirection.current.dx;
+          const dy = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup')) || touchDirection.current.dy;
           const magnitude = Math.hypot(dx, dy) || 1;
           const vx = dx / magnitude * SPEED * dt / 1000, vy = dy / magnitude * SPEED * dt / 1000;
           const blocked = (x: number, y: number) => p.alive && (collides(x, y, g.mapVariant) || (g.sabotage === 'doors' && now < g.doorsUntil && DOORS.some(door => hitsRect(x, y, door))));
@@ -277,15 +294,15 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       }
       const me = rendered.get(g.me);
       if (me) {
-        camera.x += (clamp(me.x - VIEW.width / 2, 0, bounds.width - VIEW.width) - camera.x) * (1 - Math.exp(-dt / 150));
-        camera.y += (clamp(me.y - VIEW.height / 2, 0, bounds.height - VIEW.height) - camera.y) * (1 - Math.exp(-dt / 150));
+        camera.x += (clamp(me.x - view.width / 2, 0, bounds.width - view.width) - camera.x) * (1 - Math.exp(-dt / 150));
+        camera.y += (clamp(me.y - view.height / 2, 0, bounds.height - view.height) - camera.y) * (1 - Math.exp(-dt / 150));
       }
       const onScreen = (x: number, y: number, w = 0, h = 0, pad = 64) =>
-        x + w >= camera.x - pad && x <= camera.x + VIEW.width + pad &&
-        y + h >= camera.y - pad && y <= camera.y + VIEW.height + pad;
-      ctx.setTransform(2, 0, 0, 2, 0, 0);
-      ctx.clearRect(0, 0, VIEW.width, VIEW.height);
-      ctx.fillStyle = '#07121e'; ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+        x + w >= camera.x - pad && x <= camera.x + view.width + pad &&
+        y + h >= camera.y - pad && y <= camera.y + view.height + pad;
+      ctx.setTransform(view.scale, 0, 0, view.scale, 0, 0);
+      ctx.clearRect(0, 0, view.width, view.height);
+      ctx.fillStyle = '#07121e'; ctx.fillRect(0, 0, view.width, view.height);
       ctx.save(); ctx.translate(-camera.x, -camera.y);
       ctx.fillStyle = '#0c2030'; ctx.fillRect(0, 0, bounds.width, bounds.height);
       for (const corridor of corridors) {
@@ -320,8 +337,8 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillStyle = '#25465b';
       }
       ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 1;
-      for (let x = Math.floor(camera.x / 40) * 40; x <= Math.min(bounds.width, camera.x + VIEW.width + 40); x += 40) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + VIEW.height); ctx.stroke(); }
-      for (let y = Math.floor(camera.y / 40) * 40; y <= Math.min(bounds.height, camera.y + VIEW.height + 40); y += 40) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + VIEW.width, y); ctx.stroke(); }
+      for (let x = Math.floor(camera.x / 40) * 40; x <= Math.min(bounds.width, camera.x + view.width + 40); x += 40) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + view.height); ctx.stroke(); }
+      for (let y = Math.floor(camera.y / 40) * 40; y <= Math.min(bounds.height, camera.y + view.height + 40); y += 40) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + view.width, y); ctx.stroke(); }
       ctx.setLineDash([23, 19]); ctx.strokeStyle = '#7ec7c32b'; ctx.lineWidth = 4;
       for (const [ax, ay, bx, by] of [[470, 920, 1100, 920], [1700, 920, 2330, 920], [1400, 380, 1400, 685], [1400, 1115, 1400, 1440]]) {
         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
@@ -451,11 +468,11 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         const radius = g.sabotage === 'lights' ? 150 : 355;
         const fog = ctx.createRadialGradient(me.x, me.y, 50, me.x, me.y, radius);
         fog.addColorStop(0, '#02081300'); fog.addColorStop(.6, '#0208130c'); fog.addColorStop(1, '#020813ed');
-        ctx.fillStyle = fog; ctx.fillRect(camera.x, camera.y, VIEW.width, VIEW.height);
+        ctx.fillStyle = fog; ctx.fillRect(camera.x, camera.y, view.width, view.height);
       }
       ctx.restore();
       // A small minimap keeps the wide ship readable without hiding the play field.
-      const scale = Math.min(148 / bounds.width, 98 / bounds.height), ox = VIEW.width - 171, oy = 23;
+      const scale = Math.min(148 / bounds.width, 98 / bounds.height), ox = view.width - 171, oy = 23;
       ctx.fillStyle = '#06131edc'; ctx.beginPath(); ctx.roundRect(ox - 10, oy - 10, 168, 118, 12); ctx.fill();
       ctx.strokeStyle = '#7daeb056'; ctx.stroke();
       for (const room of ROOMS) {
@@ -477,7 +494,7 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
       frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', resize); };
   }, []);
-  return <canvas ref={ref} width={VIEW.width * 2} height={VIEW.height * 2} onClick={onInteract} aria-label="Bản đồ tàu, dùng WASD để di chuyển" />;
+  return <canvas ref={ref} width={VIEW.width * 2} height={VIEW.height * 2} onClick={event => { if (event.detail && matchMedia('(pointer: fine)').matches) onInteract(); }} aria-label="Bản đồ tàu" />;
 }

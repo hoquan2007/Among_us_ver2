@@ -6,7 +6,9 @@ import {
 } from '../../../packages/protocol/src/index';
 import './style.css';
 import './experience.css';
+import './mobile.css';
 import { GameScene } from './GameScene';
+import { TouchControls, type Direction } from './TouchControls';
 import { musicEnabled, setMusicActive, setMusicEnabled, unlockMusic } from './ambient';
 
 const apiBase = (import.meta.env.VITE_REALTIME_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '');
@@ -76,6 +78,7 @@ function TaskModal({ id, fake, ready, onClose, onStep, onComplete }: { id: strin
 }
 
 function TacticalMap({ game, onClose }: { game: Snapshot; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
   const bounds = mapBounds(game.mapVariant);
   const me = game.players.find(player => player.id === game.me);
   const rooms = ROOMS.filter(room => game.mapVariant === 'full' || !room.outer);
@@ -86,7 +89,7 @@ function TacticalMap({ game, onClose }: { game: Snapshot; onClose: () => void })
     { x: 530, y: 390, w: 125, h: 1040 }, { x: 2140, y: 390, w: 125, h: 1040 },
     ...(game.mapVariant === 'full' ? [{ x: 490, y: 1850, w: 2250, h: 110 }, { x: 2770, y: 150, w: 150, h: 1620 }, { x: 1300, y: 1760, w: 200, h: 260 }, { x: 2420, y: 1760, w: 180, h: 260 }] : [])
   ];
-  return <div className="overlay tactical-overlay" onClick={onClose}><section className="modal tactical-modal" onClick={event => event.stopPropagation()} aria-label="Bản đồ chiến thuật"><button className="close" onClick={onClose} aria-label="Đóng bản đồ">×</button><div className="eyebrow">SƠ ĐỒ TÀU · {rooms.length} PHÒNG</div><h2>Bản đồ chiến thuật</h2><p>Chấm xanh: nhiệm vụ cần làm · Chấm đỏ: trạm sửa sự cố · Chấm trắng: bạn</p><svg className="tactical-svg" viewBox={`0 0 ${bounds.width} ${bounds.height}`} role="img" aria-label="Sơ đồ phòng, nhiệm vụ và vị trí của bạn">
+  return <div className="overlay tactical-overlay" onClick={onClose}><section className="modal tactical-modal" onClick={event => event.stopPropagation()} aria-label="Bản đồ chiến thuật"><button className="close" onClick={onClose} aria-label="Đóng bản đồ">×</button><div className="eyebrow">SƠ ĐỒ TÀU · {rooms.length} PHÒNG</div><h2>Bản đồ chiến thuật</h2><p>Chấm xanh: nhiệm vụ cần làm · Chấm đỏ: trạm sửa sự cố · Chấm trắng: bạn</p><div className="tactical-tools"><span>Phóng to rồi vuốt để xem từng khu.</span><button aria-label="Thu nhỏ bản đồ" disabled={zoom <= 1} onClick={() => setZoom(value => Math.max(1, value - .5))}>−</button><button aria-label="Phóng to bản đồ" disabled={zoom >= 3} onClick={() => setZoom(value => Math.min(3, value + .5))}>+</button></div><div className="tactical-viewport"><svg className="tactical-svg" style={{ width: `${zoom * 100}%` }} viewBox={`0 0 ${bounds.width} ${bounds.height}`} role="img" aria-label="Sơ đồ phòng, nhiệm vụ và vị trí của bạn">
     <rect width={bounds.width} height={bounds.height} fill="#0b1a27" />
     {corridors.map((path, index) => <rect key={index} x={path.x} y={path.y} width={path.w} height={path.h} rx="22" fill="#315e69" stroke="#75c9c4" strokeOpacity=".45" strokeWidth="7" />)}
     {rooms.map(room => <g key={room.name}><title>{room.name}</title><rect x={room.x} y={room.y} width={room.w} height={room.h} rx="24" fill={room.kind === 'meeting' ? '#24585b' : room.outer ? '#244758' : '#1b3b4b'} stroke="#87bdc0" strokeWidth="9" /><text x={room.x + room.w / 2} y={room.y + room.h / 2} textAnchor="middle" fill="#dcf5ec" fontSize="42" fontWeight="700">{room.name}</text></g>)}
@@ -94,7 +97,7 @@ function TacticalMap({ game, onClose }: { game: Snapshot; onClose: () => void })
     {game.sabotage === 'reactor' && REACTOR_FIXES.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="42" fill={game.reactorFixed.includes(index) ? '#45dfad' : '#ff6f77'} stroke="#fff" strokeWidth="8" />)}
     {game.sabotage === 'lights' && <circle cx={STATIONS[0].x} cy={STATIONS[0].y} r="42" fill="#ff6f77" stroke="#fff" strokeWidth="8" />}
     {me && <g><circle cx={me.x} cy={me.y} r="63" fill="#fff" fillOpacity=".18" /><circle cx={me.x} cy={me.y} r="26" fill="#fff" stroke="#092b35" strokeWidth="8" /></g>}
-  </svg><div className="tactical-note">Nhấn <kbd>M</kbd> hoặc <kbd>Esc</kbd> để trở lại ván.</div></section></div>;
+  </svg></div><div className="tactical-note">Nhấn <kbd>M</kbd>, <kbd>Esc</kbd> hoặc nút × để trở lại ván.</div></section></div>;
 }
 
 function App() {
@@ -111,6 +114,8 @@ function App() {
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [musicOn, setMusicOn] = useState(musicEnabled);
   const [mapOpen, setMapOpen] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<'tasks' | 'sabotage' | null>(null);
+  const [meetingTab, setMeetingTab] = useState<'players' | 'chat'>('players');
   const [, setClock] = useState(0);
   const socket = useRef<WebSocket | null>(null);
   const serverOffset = useRef(0);
@@ -118,6 +123,7 @@ function App() {
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creating = useRef(false);
   const keys = useRef(new Set<string>());
+  const touchDirection = useRef<Direction>({ dx: 0, dy: 0 });
   const snapshotRef = useRef<Snapshot | null>(null);
   const taskRef = useRef<string | null>(null);
   const taskSession = useRef('');
@@ -135,7 +141,8 @@ function App() {
     return () => { window.removeEventListener('pointerdown', unlockMusic); setMusicActive(false); };
   }, []);
   useEffect(() => setMusicActive(snapshot?.phase === 'playing' || snapshot?.phase === 'meeting'), [snapshot?.phase, musicOn]);
-  useEffect(() => { if (snapshot?.phase !== 'playing') setMapOpen(false); }, [snapshot?.phase]);
+  useEffect(() => { if (snapshot?.phase !== 'playing') { setMapOpen(false); setMobilePanel(null); touchDirection.current = { dx: 0, dy: 0 }; } }, [snapshot?.phase]);
+  useEffect(() => { if (snapshot?.phase === 'meeting') setMeetingTab('players'); }, [snapshot?.phase]);
 
   const connect = (room: string, playerName: string) => {
     if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
@@ -192,14 +199,17 @@ function App() {
       const g = snapshotRef.current;
       if (g?.phase !== 'playing' || taskRef.current || mapOpenRef.current) return;
       const k = keys.current;
-      const dx = Number(k.has('d') || k.has('arrowright')) - Number(k.has('a') || k.has('arrowleft'));
-      const dy = Number(k.has('s') || k.has('arrowdown')) - Number(k.has('w') || k.has('arrowup'));
+      const dx = Number(k.has('d') || k.has('arrowright')) - Number(k.has('a') || k.has('arrowleft')) || touchDirection.current.dx;
+      const dy = Number(k.has('s') || k.has('arrowdown')) - Number(k.has('w') || k.has('arrowup')) || touchDirection.current.dy;
       if (dx || dy) send(socket.current, { type: 'move', dx, dy });
     }, 125);
-    return () => { clearInterval(timer); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+    const stop = () => { keys.current.clear(); touchDirection.current = { dx: 0, dy: 0 }; };
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', stop);
+    return () => { clearInterval(timer); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', stop); document.removeEventListener('visibilitychange', stop); };
   }, []);
 
-  useEffect(() => { if (task || mapOpen) keys.current.clear(); }, [task, mapOpen]);
+  useEffect(() => { if (task || mapOpen || mobilePanel) { keys.current.clear(); touchDirection.current = { dx: 0, dy: 0 }; } }, [task, mapOpen, mobilePanel]);
   useEffect(() => {
     if (task && snapshot?.completedTasks.includes(task)) { setTask(null); taskSession.current = ''; }
   }, [snapshot?.completedTasks, task]);
@@ -267,16 +277,17 @@ function App() {
       if (['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement)?.tagName)) return;
       if (event.key === 'Escape' && task) { closeTask(); return; }
       if (event.key === 'Escape' && mapOpen) { setMapOpen(false); return; }
+      if (event.key === 'Escape' && mobilePanel) { setMobilePanel(null); return; }
       if (task || snapshot?.phase !== 'playing' || event.repeat) return;
       if (event.key.toLowerCase() === 'm') { setMapOpen(value => !value); return; }
-      if (mapOpen) return;
+      if (mapOpen || mobilePanel) return;
       if (event.key.toLowerCase() === 'e') interact();
       if (event.key.toLowerCase() === 'q' && nearTarget) send(socket.current, { type: 'kill', target: nearTarget.id });
       if (event.key.toLowerCase() === 'v' && nearVent >= 0) send(socket.current, { type: 'vent', index: nearVent });
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [snapshot, task, mapOpen]);
+  }, [snapshot, task, mapOpen, mobilePanel]);
 
   if (!snapshot) return <main className="landing">
     <div className="stars" />
@@ -289,11 +300,11 @@ function App() {
       <div className="divider">HOẶC THAM GIA</div>
       <div className="join"><input value={codeInput} maxLength={6} placeholder="MÃ PHÒNG" onChange={e => setCodeInput(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && connect(codeInput, name)} /><button onClick={() => connect(codeInput, name)}>Vào phòng</button></div>
       {status && <div className="status">{status}</div>}{error && <div className="error">{error}</div>}
-      <p className="small">TỐI ƯU CHO MÁY TÍNH · 4–10 NGƯỜI · MỜI BẰNG LINK</p>
+      <p className="small">CHƠI TRÊN ĐIỆN THOẠI VÀ MÁY TÍNH · 4–10 NGƯỜI · MỜI BẰNG LINK</p>
     </section>
   </main>;
 
-  const share = async () => { await navigator.clipboard.writeText(invite); setCopied(true); setTimeout(() => setCopied(false), 1800); };
+  const share = async () => { if (navigator.share && window.matchMedia('(pointer: coarse)').matches) { try { await navigator.share({ title: 'Starship Suspects', url: invite }); return; } catch (error) { if ((error as Error).name === 'AbortError') return; } } await navigator.clipboard.writeText(invite); setCopied(true); setTimeout(() => setCopied(false), 1800); };
   const leave = () => { desired.current = null; const current = socket.current; socket.current = null; current?.close(); setSnapshot(null); setCode(''); setStatus(''); history.replaceState(null, '', '/'); };
   const meeting = snapshot.meeting;
   return <div className="app-shell">
@@ -309,7 +320,9 @@ function App() {
     </main> : <main className="game-layout">
       <section className="map-panel">
         <div className="map-header"><div><span className="eyebrow">{snapshot.phase === 'ended' ? 'KẾT THÚC' : snapshot.phase === 'meeting' ? 'HỌP KHẨN CẤP' : 'ĐANG CHƠI'} · {currentRoom} · {snapshot.mapVariant === 'full' ? '22 PHÒNG' : '16 PHÒNG'}</span><h2>{snapshot.role === 'impostor' ? 'Kẻ phá hoại' : 'Phi hành đoàn'}</h2></div><div className="progress"><span>NHIỆM VỤ {Math.round(snapshot.taskProgress * 100)}%</span><div><i style={{ width: `${snapshot.taskProgress * 100}%` }} /></div></div></div>
-        <div className="canvas-wrap"><GameScene game={snapshot} onInteract={interact} pressed={keys} /></div>
+        <div className="canvas-wrap"><GameScene game={snapshot} onInteract={interact} pressed={keys} touchDirection={touchDirection} />
+          {snapshot.phase === 'playing' && <TouchControls direction={touchDirection} disabled={!!(task || mapOpen || mobilePanel)} action={interact} actionLabel={nearBody && me?.alive ? 'Báo cáo' : snapshot.sabotage === 'reactor' && nearReactor >= 0 && me?.alive && snapshot.role === 'crew' ? 'Sửa lò' : snapshot.sabotage === 'lights' && nearStation?.id === 'wires' ? 'Sửa đèn' : nearStation ? 'Nhiệm vụ' : nearEmergency && me?.alive ? 'Họp' : 'Tương tác'} canAct={!!(nearBody && me?.alive || snapshot.sabotage === 'reactor' && nearReactor >= 0 && me?.alive && snapshot.role === 'crew' && !snapshot.reactorFixed.includes(nearReactor) || snapshot.sabotage === 'lights' && nearStation?.id === 'wires' || nearStation && !snapshot.completedTasks.includes(nearStation.id) || nearEmergency && me?.alive && !snapshot.emergencyUsed)} kill={() => nearTarget && send(socket.current, { type: 'kill', target: nearTarget.id })} canKill={!!(nearTarget && me?.alive && seconds(snapshot.killReadyAt) === 0)} vent={() => nearVent >= 0 && send(socket.current, { type: 'vent', index: nearVent })} canVent={nearVent >= 0 && !!me?.alive} map={() => setMapOpen(true)} tasks={() => setMobilePanel('tasks')} sabotage={() => setMobilePanel('sabotage')} isImpostor={snapshot.role === 'impostor'} />}
+        </div>
         <div className="map-footer"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> DI CHUYỂN</span><span><kbd>E</kbd> TƯƠNG TÁC</span><button className="map-toggle" onClick={() => setMapOpen(true)}><kbd>M</kbd> BẢN ĐỒ</button><span>{snapshot.role === 'impostor' ? <><kbd>Q</kbd> HẠ GỤC · <kbd>V</kbd> THÔNG HƠI</> : 'KHÁM PHÁ CÁC PHÒNG ĐỂ LÀM NHIỆM VỤ'}</span></div>
       </section>
       <aside className="sidebar"><div className={`role-card ${snapshot.role === 'impostor' ? 'impostor' : ''}`}><div className="eyebrow">VAI TRÒ BÍ MẬT</div><h3>{snapshot.role === 'impostor' ? 'KẺ PHÁ HOẠI' : 'PHI HÀNH ĐOÀN'}</h3><p>{snapshot.role === 'impostor' ? 'Hạ gục, phá hoại và đánh lạc hướng đoàn.' : 'Làm nhiệm vụ và tìm ra kẻ phá hoại.'}</p>{!me?.alive && <div className="dead-badge">BẠN ĐÃ CHẾT · {snapshot.role === 'crew' ? 'TIẾP TỤC LÀM NHIỆM VỤ' : 'THEO DÕI TRẬN'}</div>}</div>
@@ -329,8 +342,9 @@ function App() {
       </aside>
     </main>}
     {mapOpen && snapshot.phase === 'playing' && <TacticalMap game={snapshot} onClose={() => setMapOpen(false)} />}
+    {mobilePanel && snapshot.phase === 'playing' && <div className="overlay mobile-panel-overlay" onClick={() => setMobilePanel(null)}><section className="modal mobile-panel" onClick={event => event.stopPropagation()}><button className="close" onClick={() => setMobilePanel(null)} aria-label="Đóng bảng">×</button><div className="eyebrow">{mobilePanel === 'tasks' ? 'MỤC TIÊU' : 'KẺ PHÁ HOẠI'}</div><h2>{mobilePanel === 'tasks' ? 'Nhiệm vụ' : 'Phá hoại'}</h2>{mobilePanel === 'tasks' ? snapshot.role === 'crew' ? STATIONS.filter(station => snapshot.tasks.includes(station.id)).map(station => <div className={`task-row ${snapshot.completedTasks.includes(station.id) ? 'is-done' : ''}`} key={station.id}><span>{snapshot.completedTasks.includes(station.id) ? '✓' : '○'}</span><div>{station.name}<small>{station.room}</small></div></div>) : <p>Giả làm nhiệm vụ và tìm cơ hội phá hoại.</p> : <div className="sabotage-actions">{(['lights', 'doors', 'reactor'] as const).map(kind => <button key={kind} disabled={!!snapshot.sabotage || seconds(snapshot.sabotageReadyAt) > 0} onClick={() => { send(socket.current, { type: 'sabotage', kind }); setMobilePanel(null); }}>{kind === 'lights' ? '◉ Tắt đèn' : kind === 'doors' ? '▣ Khóa cửa' : '☢ Lò phản ứng'}</button>)}<small>Hồi chiêu: {seconds(snapshot.sabotageReadyAt)}s</small></div>}</section></div>}
     {task && snapshot.phase === 'playing' && <TaskModal key={`${task}-${taskSession.current}`} id={task} fake={snapshot.role === 'impostor'} ready={snapshot.role === 'impostor' || taskReady === task} onClose={closeTask} onStep={step => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskStep', id: task, step, session: taskSession.current }); }} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task, session: taskSession.current }); else closeTask(); }} />}
-      {meeting && snapshot.phase === 'meeting' && <div className="overlay"><section className="modal meeting-modal"><div className="eyebrow">{meeting.reason.toUpperCase()} · {meeting.stage === 'discussion' ? 'THẢO LUẬN' : meeting.stage === 'voting' ? 'BỎ PHIẾU' : 'KẾT QUẢ'}</div><h2>{meeting.stage === 'result' ? meeting.ejected ? `${snapshot.players.find(p => p.id === meeting.ejected)?.name || 'Một người'} đã bị loại` : 'Không ai bị loại' : 'Ai là kẻ phá hoại?'}</h2><div className="meeting-tools"><div className="timer">{seconds(meeting.endsAt)}s</div>{meeting.stage === 'discussion' && <div className="end-meeting"><span>Kết thúc họp sớm: {meeting.endVotes?.length || 0}/{Math.floor(snapshot.players.filter(p => p.alive && p.connected).length / 2) + 1} phiếu</span><button disabled={!me?.alive || meeting.endVotes?.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'endMeeting' })}>{meeting.endVotes?.includes(snapshot.me) ? 'Đã đồng ý' : 'Đồng ý kết thúc'}</button></div>}</div><div className="meeting-grid"><div className="vote-list">{snapshot.players.map(p => <button key={p.id} disabled={!p.alive || meeting.stage !== 'voting' || !me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: p.id })}><span className="player-dot" style={{ background: p.color }} />{p.name}{!p.alive && ' · đã chết'}{meeting.votesCast.includes(p.id) && <small>ĐÃ BỎ PHIẾU</small>}</button>)}{meeting.stage === 'voting' && <button disabled={!me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: null })}>Bỏ qua phiếu</button>}</div><div className="chat"><div className="messages">{snapshot.chat.map(m => <div key={m.id}><strong>{m.name}: </strong>{m.text}</div>)}</div><form onSubmit={e => { e.preventDefault(); send(socket.current, { type: 'chat', text: chatText }); setChatText(''); }}><input value={chatText} maxLength={180} placeholder={me?.alive ? 'Nhắn trong cuộc họp…' : 'Chỉ ma khác thấy tin nhắn…'} onChange={e => setChatText(e.target.value)} /><button disabled={!chatText.trim()}>Gửi</button></form></div></div></section></div>}
+      {meeting && snapshot.phase === 'meeting' && <div className="overlay"><section className="modal meeting-modal"><div className="eyebrow">{meeting.reason.toUpperCase()} · {meeting.stage === 'discussion' ? 'THẢO LUẬN' : meeting.stage === 'voting' ? 'BỎ PHIẾU' : 'KẾT QUẢ'}</div><h2>{meeting.stage === 'result' ? meeting.ejected ? `${snapshot.players.find(p => p.id === meeting.ejected)?.name || 'Một người'} đã bị loại` : 'Không ai bị loại' : 'Ai là kẻ phá hoại?'}</h2><div className="meeting-tools"><div className="timer">{seconds(meeting.endsAt)}s</div>{meeting.stage === 'discussion' && <div className="end-meeting"><span>Kết thúc họp sớm: {meeting.endVotes?.length || 0}/{Math.floor(snapshot.players.filter(p => p.alive && p.connected).length / 2) + 1} phiếu</span><button disabled={!me?.alive || meeting.endVotes?.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'endMeeting' })}>{meeting.endVotes?.includes(snapshot.me) ? 'Đã đồng ý' : 'Đồng ý kết thúc'}</button></div>}</div><div className="meeting-tabs"><button className={meetingTab === "players" ? "active" : ""} onClick={() => setMeetingTab("players")}>Người chơi</button><button className={meetingTab === "chat" ? "active" : ""} onClick={() => setMeetingTab("chat")}>Chat</button></div><div className={`meeting-grid mobile-${meetingTab}`}><div className="vote-list">{snapshot.players.map(p => <button key={p.id} disabled={!p.alive || meeting.stage !== 'voting' || !me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: p.id })}><span className="player-dot" style={{ background: p.color }} />{p.name}{!p.alive && ' · đã chết'}{meeting.votesCast.includes(p.id) && <small>ĐÃ BỎ PHIẾU</small>}</button>)}{meeting.stage === 'voting' && <button disabled={!me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: null })}>Bỏ qua phiếu</button>}</div><div className="chat"><div className="messages">{snapshot.chat.map(m => <div key={m.id}><strong>{m.name}: </strong>{m.text}</div>)}</div><form onSubmit={e => { e.preventDefault(); send(socket.current, { type: 'chat', text: chatText }); setChatText(''); }}><input value={chatText} maxLength={180} placeholder={me?.alive ? 'Nhắn trong cuộc họp…' : 'Chỉ ma khác thấy tin nhắn…'} onChange={e => setChatText(e.target.value)} /><button disabled={!chatText.trim()}>Gửi</button></form></div></div></section></div>}
     {snapshot.phase === 'ended' && <div className="overlay"><section className="modal end-modal"><div className="eyebrow">VÁN ĐẤU KẾT THÚC</div><h2 className={snapshot.winner === 'impostor' ? 'red' : 'cyan'}>{snapshot.winner === 'impostor' ? 'KẺ PHÁ HOẠI THẮNG' : 'PHI HÀNH ĐOÀN THẮNG'}</h2><p>{snapshot.winnerReason}</p><div className="winner-list">{snapshot.players.map(p => <span key={p.id} style={{ color: p.color }}>{p.name}{snapshot.allies.includes(p.id) ? ' ◆' : ''}</span>)}</div>{snapshot.host === snapshot.me ? <button className="primary large" onClick={() => send(socket.current, { type: 'restart' })}>Chơi ván mới →</button> : <p>Đang chờ host mở ván mới…</p>}</section></div>}
     {error && <div className="toast" onClick={() => setError('')}>{error} ×</div>}
   </div>;
