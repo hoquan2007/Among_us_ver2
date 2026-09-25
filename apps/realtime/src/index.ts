@@ -7,6 +7,7 @@ import {
 } from '../../../packages/protocol/src/index';
 
 interface Env { ROOMS: DurableObjectNamespace<GameRoom>; WEB_ORIGIN: string; }
+interface SocketAttachment { id?: string; x?: number; y?: number; lastMoveAt?: number; }
 interface Player {
   id: string; token: string; name: string; color: string; x: number; y: number;
   alive: boolean; connected: boolean; disconnectedAt: number; role: Role | null;
@@ -63,6 +64,12 @@ export default {
       }
       return json({ error: 'Không tạo được phòng, thử lại.' }, 503, cors);
     }
+    const roomStatus = url.pathname.match(/^\/rooms\/([A-Z2-9]{6})$/);
+    if (roomStatus && request.method === 'GET') {
+      const stub = env.ROOMS.get(env.ROOMS.idFromName(roomStatus[1]));
+      const res = await stub.fetch(`https://room.internal/status?token=${encodeURIComponent(url.searchParams.get('token') || '')}`);
+      return json(await res.json(), res.status, cors);
+    }
     const match = url.pathname.match(/^\/ws\/([A-Z2-9]{6})$/);
     if (match && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
       const stub = env.ROOMS.get(env.ROOMS.idFromName(match[1]));
@@ -79,11 +86,41 @@ export class GameRoom extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.blockConcurrencyWhile(async () => { this.game = (await ctx.storage.get<Game>('game')) ?? null; });
+    ctx.blockConcurrencyWhile(async () => {
+      this.game = (await ctx.storage.get<Game>('game')) ?? null;
+      if (this.game) for (const ws of ctx.getWebSockets()) {
+        const attachment = ws.deserializeAttachment() as SocketAttachment | null;
+        const player = this.game.players.find(p => p.id === attachment?.id);
+        if (player) this.restorePosition(player, attachment);
+      }
+    });
+  }
+
+  private restorePosition(player: Player, attachment: SocketAttachment | null): void {
+    if (!attachment || !Number.isFinite(attachment.x) || !Number.isFinite(attachment.y) || !Number.isFinite(attachment.lastMoveAt)) return;
+    if (attachment.lastMoveAt! > player.lastMoveAt) {
+      player.x = attachment.x!; player.y = attachment.y!; player.lastMoveAt = attachment.lastMoveAt!;
+    }
+  }
+
+  private attachPosition(player: Player): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      if ((ws.deserializeAttachment() as SocketAttachment | null)?.id === player.id) {
+        ws.serializeAttachment({ id: player.id, x: player.x, y: player.y, lastMoveAt: player.lastMoveAt });
+      }
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/status' && request.method === 'GET') {
+      if (!this.game) return json({ error: 'Phòng không tồn tại.' }, 404);
+      const token = url.searchParams.get('token') || '';
+      const returning = token.length >= 32 && this.game.players.some(player => player.token === token);
+      if (!returning && this.game.phase !== 'lobby') return json({ error: 'Trận đã bắt đầu; bạn chưa ở trong phòng.' }, 409);
+      if (!returning && this.game.players.length >= 10) return json({ error: 'Phòng đã đầy.' }, 409);
+      return json({ ok: true });
+    }
     if (url.pathname === '/init' && request.method === 'POST') {
       if (this.game) return json({ error: 'exists' }, 409);
       const code = url.searchParams.get('code') || '';
@@ -121,7 +158,7 @@ export class GameRoom extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ id: player.id });
+    server.serializeAttachment({ id: player.id, x: player.x, y: player.y, lastMoveAt: player.lastMoveAt });
     this.send(server, { type: 'welcome', token: player.token, id: player.id });
     await this.persist();
     this.broadcast(true);
@@ -139,14 +176,17 @@ export class GameRoom extends DurableObject<Env> {
     if (!message || typeof message.type !== 'string') return;
     const now = Date.now();
     const error = await this.handle(player, message, now);
+    if (message.type === 'move' && !error) ws.serializeAttachment({ id: player.id, x: player.x, y: player.y, lastMoveAt: player.lastMoveAt });
     if (error) this.send(ws, { type: 'error', message: error });
     else if (message.type === 'taskStart') this.send(ws, { type: 'taskReady', id: message.id, session: message.session });
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
-    const id = (ws.deserializeAttachment() as { id?: string } | null)?.id;
+    const attachment = ws.deserializeAttachment() as SocketAttachment | null;
+    const id = attachment?.id;
     const player = this.game?.players.find(p => p.id === id);
     if (!player) return;
+    this.restorePosition(player, attachment);
     if (this.ctx.getWebSockets().some(other => other !== ws && (other.deserializeAttachment() as { id?: string } | null)?.id === id)) return;
     player.connected = false;
     player.disconnectedAt = Date.now();
@@ -244,7 +284,7 @@ export class GameRoom extends DurableObject<Env> {
       }
       steps.push(m.step);
     } else if (m.type === 'taskComplete') {
-      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id) || (p.taskSession?.[m.id] || '') !== (m.session || '')) return;
+      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id) || !p.taskStarted[m.id] || (p.taskSession?.[m.id] || '') !== (m.session || '')) return;
       const station = STATIONS.find(s => s.id === m.id);
       const minimum = m.id === 'scan' || m.id === 'upload' || m.id === 'archive' ? 3000 : 1800;
       const expected = m.id === 'wires' ? 3 : TASK_SEQUENCE[m.id]?.length || 0;
@@ -261,9 +301,11 @@ export class GameRoom extends DurableObject<Env> {
       await this.persist();
       return;
     } else if (m.type === 'kill') {
-      if (g.phase !== 'playing' || p.role !== 'impostor' || !p.alive || now < p.killReadyAt) return;
+      if (g.phase !== 'playing' || p.role !== 'impostor' || !p.alive) return 'Không thể hạ gục lúc này.';
+      if (now < p.killReadyAt) return 'Hạ gục đang hồi chiêu.';
       const target = g.players.find(x => x.id === m.target && x.alive && x.role === 'crew');
-      if (!target || distance(p, target) > KILL_RANGE) return;
+      if (!target) return 'Mục tiêu không khả dụng.';
+      if (distance(p, target) > KILL_RANGE) return 'Hãy đến gần mục tiêu hơn.';
       target.alive = false;
       g.bodies.push({ id: crypto.randomUUID(), playerId: target.id, x: target.x, y: target.y, color: target.color });
       g.kills ??= [];
@@ -332,6 +374,8 @@ export class GameRoom extends DurableObject<Env> {
       const vent = VENTS[m.index];
       if (!vent || distance(p, vent) > INTERACT_RANGE) return;
       p.x = VENTS[vent.to].x; p.y = VENTS[vent.to].y;
+      p.lastMoveAt = now;
+      this.attachPosition(p);
     } else return;
     await this.persist();
     if (m.type === 'taskStart' || m.type === 'taskStep') return;
@@ -363,6 +407,7 @@ export class GameRoom extends DurableObject<Env> {
       p.tasks = p.role === 'crew' ? chosen.map(s => s.id) : [];
       p.completedTasks = []; p.taskStarted = {}; p.taskSteps = {}; p.taskSession = {}; p.killReadyAt = now + 20_000;
       p.sabotageReadyAt = now + 15_000; p.emergencyUsed = 0; p.lastMoveAt = now;
+      this.attachPosition(p);
     });
   }
 
@@ -372,7 +417,7 @@ export class GameRoom extends DurableObject<Env> {
     g.bodies = [];
     g.meeting = { stage: 'discussion', endsAt: now + PRESETS[g.preset || 'standard'].discussion * 1000, reporter: p.id, reason, ejected: null, skipped: false, endVotes: [] };
     g.chat = [{ id: crypto.randomUUID(), name: 'Hệ thống', text: `${p.name}: ${reason}`, at: now, ghost: false }];
-    g.players.forEach((x, i) => { x.votes = undefined; x.x = SPAWNS[i][0]; x.y = SPAWNS[i][1]; });
+    g.players.forEach((x, i) => { x.votes = undefined; x.x = SPAWNS[i][0]; x.y = SPAWNS[i][1]; x.lastMoveAt = now; x.taskStarted = {}; x.taskSteps = {}; x.taskSession = {}; this.attachPosition(x); });
   }
 
   private advanceMeeting(now: number): void {

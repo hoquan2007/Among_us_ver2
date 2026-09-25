@@ -141,7 +141,7 @@ function App() {
     return () => { window.removeEventListener('pointerdown', unlockMusic); setMusicActive(false); };
   }, []);
   useEffect(() => setMusicActive(snapshot?.phase === 'playing' || snapshot?.phase === 'meeting'), [snapshot?.phase, musicOn]);
-  useEffect(() => { if (snapshot?.phase !== 'playing') { setMapOpen(false); setMobilePanel(null); touchDirection.current = { dx: 0, dy: 0 }; } }, [snapshot?.phase]);
+  useEffect(() => { if (snapshot?.phase !== 'playing') { setMapOpen(false); setMobilePanel(null); touchDirection.current = { dx: 0, dy: 0 }; if (taskRef.current) { setTask(null); setTaskReady(null); taskSession.current = ''; } } }, [snapshot?.phase]);
   useEffect(() => { if (snapshot?.phase === 'meeting') setMeetingTab('players'); }, [snapshot?.phase]);
 
   const connect = (room: string, playerName: string) => {
@@ -171,11 +171,22 @@ function App() {
       else if (message.type === 'taskReady' && taskRef.current === message.id && taskSession.current === (message.session || '')) setTaskReady(message.id);
       else if (message.type === 'error') { setError(message.message); if (taskRef.current) { setTask(null); taskSession.current = ''; } }
     };
-    ws.onerror = () => { if (socket.current === ws) setStatus('Mất kết nối'); };
+    ws.onerror = () => {
+      if (socket.current !== ws) return;
+      setStatus('Mất kết nối');
+      void fetch(`${apiBase}/rooms/${normalized}?token=${encodeURIComponent(saved)}`).then(async response => {
+        if (socket.current !== ws || ![404, 409].includes(response.status)) return;
+        const result = await response.json() as { error?: string };
+        desired.current = null;
+        if (retry.current) clearTimeout(retry.current);
+        history.replaceState(null, '', '/'); setCode('');
+        setStatus(''); setError(result.error || 'Không thể vào phòng.');
+      }).catch(() => { /* network errors may recover on retry */ });
+    };
     ws.onclose = event => {
       if (socket.current !== ws || !desired.current) return;
       setStatus('Mất kết nối, đang thử lại…');
-      if (event.code === 4001) return;
+      if (event.code === 4001) { desired.current = null; setStatus(''); setError('Phiên này đã mở ở tab hoặc thiết bị khác.'); return; }
       retry.current = setTimeout(() => connect(normalized, playerName), 2000);
     };
   };

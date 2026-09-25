@@ -50,8 +50,8 @@ try {
   assert.equal(crew.length, 3);
   const routes = [
     { c: crew[0], id: 'valves', steps: [2, 0, 1], path: [['x', 1400], ['y', 1290], ['x', 930], ['y', 1600]] },
-    { c: crew[1], id: 'cargo', steps: [1, 2, 0, 3], path: [['y', 880], ['x', 600], ['y', 1590], ['x', 255]] },
-    { c: crew[2], id: 'frequency', steps: [73], path: [['y', 880], ['x', 1870], ['y', 190]] }
+    { c: crew[1], id: 'cargo', steps: [1, 2, 0, 3], path: [['y', 900], ['x', 600], ['y', 1590], ['x', 255]] },
+    { c: crew[2], id: 'frequency', steps: [73], path: [['y', 900], ['x', 1870], ['y', 190]] }
   ];
   await Promise.all(routes.map(async route => {
     for (const [axis, goal] of route.path) await walk(route.c, axis, goal);

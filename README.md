@@ -1,6 +1,6 @@
 # Starship Suspects
 
-Game suy luận xã hội 2D, chơi 4–10 người qua trình duyệt desktop. Mỗi trận nằm trong phòng riêng với mã 6 ký tự hoặc link mời. Luật cốt lõi dựa trên thể loại của Among Us; đồ họa, tên và bản đồ được tạo riêng.
+Game suy luận xã hội 2D, chơi 4–10 người qua trình duyệt desktop hoặc mobile. Mỗi trận nằm trong phòng riêng với mã 6 ký tự hoặc link mời. Luật cốt lõi dựa trên thể loại của Among Us; đồ họa, tên và bản đồ được tạo riêng.
 
 ## Có thể chơi gì?
 
@@ -26,9 +26,9 @@ npm run dev:web
 
 Truy cập `http://localhost:5173`. Mặc định frontend kết nối Worker ở `http://localhost:8787`. Để thử 4 người, mở các trình duyệt hoặc cửa sổ riêng rồi vào cùng mã phòng. Có thể chạy `npm run smoke` khi Worker đang hoạt động; kiểm thử này tạo 4 WebSocket, bắt đầu ván, mở họp, bỏ phiếu và kiểm tra trở lại trận.
 
-Điều khiển: **WASD** hoặc phím mũi tên để di chuyển, **E** tương tác, **Q** hạ gục, **V** đi thông hơi. Các hành động cũng có nút trong bảng bên phải.
+Điều khiển desktop: **WASD** hoặc phím mũi tên để di chuyển, **E** tương tác, **Q** hạ gục, **V** đi thông hơi. Trên mobile, dùng joystick và các nút hành động ở cạnh màn hình.
 
-Tàu hiện có 16 khu vực và camera theo người chơi. Trước khi deploy, chạy `node scripts/check-map.mjs` để kiểm tra đường đi tới các trạm. Khi Worker đang chạy, dùng `node scripts/smoke.mjs --task --quick` để thử nhiệm vụ quét, `node scripts/smoke.mjs --wire --quick` để thử nhiệm vụ nối dây và `node scripts/smoke.mjs --kill` để thử hạ gục. `node scripts/check-new-tasks.mjs` kiểm tra ba nhiệm vụ mới; `node scripts/check-ten-players.mjs` thử phòng đủ 10 người. Kế hoạch nâng cấp dài hạn nằm trong `PRO_MAX_PLAN.md`.
+Tàu có 16 phòng trên bản đồ nhỏ và 22 phòng trên bản đồ dành cho 7–10 người, với camera theo người chơi. Trước khi deploy, chạy `node scripts/check-map.mjs` để kiểm tra đường đi tới các trạm. Khi Worker đang chạy, dùng `node scripts/smoke.mjs --task --quick` để thử nhiệm vụ quét, `node scripts/smoke.mjs --wire --quick` để thử nối dây, `node scripts/smoke.mjs --interrupt-task` để thử nhiệm vụ bị ngắt bởi cuộc họp và `node scripts/smoke.mjs --kill` để thử hạ gục sau thời gian hồi chiêu. `node scripts/check-new-tasks.mjs` kiểm tra ba nhiệm vụ mới; `node scripts/check-ten-players.mjs` thử phòng đủ 10 người; `node scripts/check-sabotage.mjs` thử ba kiểu phá hoại. Kế hoạch nâng cấp dài hạn nằm trong `PRO_MAX_PLAN.md`.
 
 ## Deploy miễn phí
 
@@ -70,4 +70,4 @@ npm run smoke
 - `apps/realtime`: Cloudflare Worker và Durable Object, giữ trạng thái mỗi phòng.
 - `packages/protocol`: kiểu thông điệp, tọa độ bản đồ và tham số luật dùng chung.
 
-Game hiện tập trung desktop và phòng riêng. Chưa có voice chat, phòng công khai, tài khoản hoặc giao diện cảm ứng hoàn chỉnh.
+Game dùng phòng riêng; hiện chưa có voice chat, phòng công khai hoặc tài khoản.

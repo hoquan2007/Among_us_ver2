@@ -46,10 +46,15 @@ try {
   await until(() => clients.every(client => latest(client).players.length === 10), 'ten in lobby');
   const host = clients.find(client => latest(client).me === latest(client).host);
   assert.ok(host);
+  const roomStatus = token => fetch(`${base}/rooms/${code}?token=${encodeURIComponent(token)}`, { headers: { Origin: origin } });
+  assert.equal((await roomStatus('')).status, 409, 'Full lobby must reject new visitors');
+  assert.equal((await roomStatus(host.token)).status, 200, 'A returning player may rejoin a full lobby');
   send(host, { type: 'preset', value: 'quick' });
   await until(() => clients.every(client => latest(client).preset === 'quick'), 'preset sync');
   send(host, { type: 'start' });
   await until(() => clients.every(client => latest(client).phase === 'playing'), 'ten playing');
+  assert.equal((await roomStatus('')).status, 409, 'Started game must reject new visitors');
+  assert.equal((await roomStatus(host.token)).status, 200, 'A returning player may rejoin a started game');
   assert.ok(clients.every(client => latest(client).mapVariant === 'full'), 'Ten players must use all 22 rooms');
   assert.equal(clients.filter(client => latest(client).role === 'impostor').length, 2);
   assert.ok(clients.filter(client => latest(client).role === 'crew').every(client => latest(client).tasks.length === 5));

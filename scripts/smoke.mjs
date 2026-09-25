@@ -6,7 +6,8 @@ const base = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const ejectMode = process.argv.includes('--eject');
 const quickMode = process.argv.includes('--quick');
 const wireMode = process.argv.includes('--wire');
-const taskMode = process.argv.includes('--task') || wireMode;
+const interruptTaskMode = process.argv.includes('--interrupt-task');
+const taskMode = process.argv.includes('--task') || wireMode || interruptTaskMode;
 const killMode = process.argv.includes('--kill');
 const endMeetingMode = process.argv.includes('--end-meeting');
 const response = await fetch(`${base}/rooms`, { method: 'POST', headers: { Origin: origin } });
@@ -16,10 +17,11 @@ assert.match(code, /^[A-Z2-9]{6}$/);
 
 function join(name, token = '') {
   return new Promise((resolve, reject) => {
-    const client = { socket: new WebSocket(`${base.replace('http', 'ws')}/ws/${code}?name=${name}&token=${token}`, { headers: { Origin: origin } }), snapshots: [], readyTasks: new Set(), token: '' };
+    const client = { socket: new WebSocket(`${base.replace('http', 'ws')}/ws/${code}?name=${name}&token=${token}`, { headers: { Origin: origin } }), snapshots: [], readyTasks: new Set(), errors: [], token: '' };
     client.socket.on('message', raw => {
       const message = JSON.parse(raw.toString());
       if (message.type === 'welcome') client.token = message.token;
+      if (message.type === 'error') client.errors.push(message.message);
       if (message.type === 'snapshot') client.snapshots.push(message);
       if (message.type === 'taskReady') client.readyTasks.add(message.id);
       if (message.type === 'snapshot' && client.token) resolve(client);
@@ -53,8 +55,21 @@ if (killMode) {
   const killer = clients.find(client => latest(client).role === 'impostor');
   const origin = latest(killer).players.find(p => p.id === latest(killer).me);
   const victim = latest(killer).players.filter(p => p.id !== origin.id).sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y) - Math.hypot(b.x - origin.x, b.y - origin.y))[0];
-  await new Promise(resolve => setTimeout(resolve, 20_200));
+  for (let step = 0; step < 12; step++) {
+    const position = latest(killer).players.find(p => p.id === latest(killer).me);
+    const gap = Math.hypot(victim.x - position.x, victim.y - position.y);
+    if (gap < 58) break;
+    killer.socket.send(JSON.stringify({ type: 'move', dx: (victim.x - position.x) / gap, dy: (victim.y - position.y) / gap }));
+    await new Promise(resolve => setTimeout(resolve, 145));
+  }
+  assert.ok(Math.hypot(victim.x - latest(killer).players.find(p => p.id === latest(killer).me).x, victim.y - latest(killer).players.find(p => p.id === latest(killer).me).y) < 76, 'Killer must be close enough to victim');
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, latest(killer).killReadyAt - Date.now() + 300)));
   killer.socket.send(JSON.stringify({ type: 'kill', target: victim.id }));
+  await new Promise(resolve => setTimeout(resolve, 250));
+  if (!latest(killer).kills?.some(effect => effect.target === victim.id)) {
+    const position = latest(killer).players.find(p => p.id === latest(killer).me);
+    throw new Error(`Kill did not resolve: ${JSON.stringify({ position, victim, readyAt: latest(killer).killReadyAt, now: Date.now(), errors: killer.errors, phase: latest(killer).phase })}`);
+  }
   await waitFor(() => latest(killer).kills?.some(effect => effect.target === victim.id));
   assert.ok(latest(killer).bodies.some(body => body.playerId === victim.id));
   for (const client of clients) client.socket.close();
@@ -89,6 +104,23 @@ if (taskMode) {
   crew.socket.send(JSON.stringify({ type: 'move', dx: 0, dy: 0 }));
   crew.socket.send(JSON.stringify({ type: 'taskStart', id: taskId }));
   await waitFor(() => crew.readyTasks.has(taskId));
+  if (interruptTaskMode) {
+    host.socket.send(JSON.stringify({ type: 'emergency' }));
+    await waitFor(() => latest(host).phase === 'meeting');
+    for (const client of clients.slice(0, 3)) {
+      client.socket.send(JSON.stringify({ type: 'endMeeting' }));
+      await delay(70);
+    }
+    await waitFor(() => latest(host).phase === 'playing');
+    await walk('x', 1400);
+    await walk('y', 260);
+    crew.socket.send(JSON.stringify({ type: 'taskComplete', id: taskId }));
+    await delay(250);
+    assert.ok(!latest(crew).completedTasks.includes(taskId), 'Meeting must invalidate an unfinished task session');
+    for (const client of clients) client.socket.close();
+    console.log(`PASS: room ${code}, meeting invalidated an unfinished task`);
+    process.exit(0);
+  }
   if (wireMode) {
     await delay(1950);
     crew.socket.send(JSON.stringify({ type: 'taskComplete', id: taskId }));
