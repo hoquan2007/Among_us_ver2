@@ -42,7 +42,7 @@ try {
   const response = await fetch(`${base}/rooms`, { method: 'POST', headers: { Origin: origin } });
   assert.equal(response.status, 201);
   const { code } = await response.json();
-  clients.push(...await Promise.all(Array.from({ length: 10 }, (_, n) => join(code, `Player${n + 1}`))));
+  clients.push(...await Promise.all(Array.from({ length: 10 }, (_, n) => join(code, n >= 8 ? 'Echo' : `Player${n + 1}`))));
   await until(() => clients.every(client => latest(client).players.length === 10), 'ten in lobby');
   const host = clients.find(client => latest(client).me === latest(client).host);
   assert.ok(host);
@@ -58,6 +58,8 @@ try {
   send(host, { type: 'emergency' });
   await until(() => clients.every(client => latest(client).phase === 'meeting'), 'ten in meeting');
   assert.ok(latest(host).meeting.endsAt - Date.now() < 26_000);
+  for (const client of clients.filter(client => client.name === 'Echo')) for (let index = 0; index < 5; index++) send(client, { type: 'chat', text: `hello ${index}` });
+  await until(() => latest(host).chat.filter(message => message.name === 'Echo').length === 10, 'same-name chat independent');
   for (const client of clients.slice(0, 6)) {
     send(client, { type: 'endMeeting' });
     await delay(60);
@@ -73,15 +75,19 @@ try {
   assert.equal(latest(again).me, oldId);
   const shieldCrew = clients.find(client => client.socket.readyState === WebSocket.OPEN && latest(client).role === 'crew' && latest(client).tasks.includes('shield'));
   assert.ok(shieldCrew, 'A crew member must have the shield task');
-  for (const [axis, goal] of [['y', 880], ['x', 2800], ['y', 1170], ['x', 3145]]) await walk(shieldCrew, axis, goal);
-  send(shieldCrew, { type: 'taskStart', id: 'shield' });
+  for (const [axis, goal] of [['y', 900], ['x', 2800], ['y', 1170], ['x', 3145]]) await walk(shieldCrew, axis, goal);
+  const taskSession = 'shield-session-regression';
+  send(shieldCrew, { type: 'taskStart', id: 'shield', session: taskSession });
   await until(() => shieldCrew.ready.has('shield'), 'shield task ready');
-  send(shieldCrew, { type: 'taskComplete', id: 'shield' });
+  send(shieldCrew, { type: 'taskComplete', id: 'shield', session: taskSession });
   await delay(150);
   assert.ok(!latest(shieldCrew).completedTasks.includes('shield'), 'Shield must reject completion without steps');
-  for (const step of [2, 0, 3, 1]) { send(shieldCrew, { type: 'taskStep', id: 'shield', step }); await delay(90); }
+  for (const step of [2, 0]) { send(shieldCrew, { type: 'taskStep', id: 'shield', step, session: taskSession }); await delay(90); }
+  send(shieldCrew, { type: 'taskStart', id: 'shield', session: taskSession });
+  await delay(90);
+  for (const step of [3, 1]) { send(shieldCrew, { type: 'taskStep', id: 'shield', step, session: taskSession }); await delay(90); }
   await delay(1900);
-  send(shieldCrew, { type: 'taskComplete', id: 'shield' });
+  send(shieldCrew, { type: 'taskComplete', id: 'shield', session: taskSession });
   await until(() => latest(shieldCrew).completedTasks.includes('shield'), 'shield task complete');
   console.log(`PASS: room ${code}, 10 players, full map, shield task, majority meeting and reconnect`);
 } finally {

@@ -338,16 +338,25 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillRect(room.x, room.y, room.w, room.h);
         const texture = roomTextures.get(room.name);
         if (texture?.complete && texture.naturalWidth) ctx.drawImage(texture, room.x, room.y, room.w, room.h);
+        const roomGlow = ctx.createRadialGradient(room.x + room.w / 2, room.y + room.h / 2, 12, room.x + room.w / 2, room.y + room.h / 2, Math.max(room.w, room.h) * .65);
+        roomGlow.addColorStop(0, room.outer ? '#70dded19' : '#83e8d915'); roomGlow.addColorStop(1, '#081b3200');
+        ctx.fillStyle = roomGlow; ctx.fillRect(room.x, room.y, room.w, room.h);
         ctx.fillStyle = meeting ? '#64d7d122' : '#ffffff0b';
         for (let x = room.x + 35; x < room.x + room.w - 25; x += 72) {
           for (let y = room.y + 40; y < room.y + room.h - 25; y += 72) ctx.fillRect(x, y, 3, 3);
         }
         roomDetails(ctx, room, time);
-        ctx.fillStyle = meeting ? '#a5f6df' : '#81aabe';
+        ctx.fillStyle = '#071925c9'; ctx.beginPath(); ctx.roundRect(room.x + 22, room.y + 20, Math.min(room.w - 44, 180), 31, 7); ctx.fill();
+        ctx.strokeStyle = room.outer ? '#91dcf666' : '#76d8c566'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = meeting ? '#a5f6df' : room.outer ? '#a9def1' : '#a8d6df';
         ctx.font = '700 14px system-ui'; ctx.textAlign = 'left';
         ctx.fillText(room.name, room.x + 30, room.y + 42);
         ctx.fillStyle = '#85b8c632';
         ctx.fillRect(room.x + 28, room.y + 52, Math.min(140, room.w - 56), 2);
+        ctx.strokeStyle = room.outer ? '#85e7f173' : '#9fe0c65e'; ctx.lineWidth = 4;
+        for (const [cx, cy, sx, sy] of [[room.x + 19, room.y + 19, 1, 1], [room.x + room.w - 19, room.y + 19, -1, 1], [room.x + 19, room.y + room.h - 19, 1, -1], [room.x + room.w - 19, room.y + room.h - 19, -1, -1]]) {
+          ctx.beginPath(); ctx.moveTo(cx, cy + sy * 20); ctx.lineTo(cx, cy); ctx.lineTo(cx + sx * 20, cy); ctx.stroke();
+        }
         if (meeting) {
           ctx.fillStyle = '#153540'; ctx.beginPath(); ctx.ellipse(EMERGENCY.x, EMERGENCY.y, 137, 91, 0, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = '#69dccc66'; ctx.lineWidth = 3; ctx.stroke();
@@ -362,6 +371,16 @@ export function GameScene({ game, onInteract, pressed }: { game: Snapshot; onInt
         ctx.fillStyle = '#32566a'; ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
         ctx.fillStyle = '#75b6bd88'; ctx.fillRect(wall.x, wall.y, wall.w, 3);
         ctx.fillStyle = '#091d2b'; ctx.fillRect(wall.x + 5, wall.y + wall.h - 4, Math.max(0, wall.w - 10), 2);
+      }
+      for (const door of DOORS) {
+        if (!onScreen(door.x, door.y, door.w, door.h)) continue;
+        ctx.fillStyle = '#62dccc34'; ctx.fillRect(door.x, door.y, door.w, door.h);
+        ctx.strokeStyle = '#b4f5e989'; ctx.lineWidth = 2;
+        if (door.w > door.h) {
+          ctx.beginPath(); ctx.moveTo(door.x + 17, door.y + door.h / 2); ctx.lineTo(door.x + door.w - 17, door.y + door.h / 2); ctx.stroke();
+        } else {
+          ctx.beginPath(); ctx.moveTo(door.x + door.w / 2, door.y + 17); ctx.lineTo(door.x + door.w / 2, door.y + door.h - 17); ctx.stroke();
+        }
       }
       if (g.sabotage === 'doors' && now < g.doorsUntil) {
         for (const door of DOORS) {

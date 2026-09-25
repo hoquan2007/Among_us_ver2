@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  EMERGENCY, INTERACT_RANGE, KILL_RANGE, PRESETS, PROTOCOL_VERSION, REACTOR_FIXES, ROOMS, STATIONS, VENTS, distance,
+  EMERGENCY, INTERACT_RANGE, KILL_RANGE, PRESETS, PROTOCOL_VERSION, REACTOR_FIXES, ROOMS, STATIONS, VENTS, distance, mapBounds,
   type ClientMessage, type ServerMessage, type Snapshot
 } from '../../../packages/protocol/src/index';
 import './style.css';
@@ -75,6 +75,28 @@ function TaskModal({ id, fake, ready, onClose, onStep, onComplete }: { id: strin
   </section></div>;
 }
 
+function TacticalMap({ game, onClose }: { game: Snapshot; onClose: () => void }) {
+  const bounds = mapBounds(game.mapVariant);
+  const me = game.players.find(player => player.id === game.me);
+  const rooms = ROOMS.filter(room => game.mapVariant === 'full' || !room.outer);
+  const objectives = STATIONS.filter(station => game.tasks.includes(station.id) && !game.completedTasks.includes(station.id));
+  const corridors = [
+    { x: 470, y: 860, w: 630, h: 120 }, { x: 1700, y: 860, w: 630, h: 120 },
+    { x: 1340, y: 380, w: 120, h: 305 }, { x: 1340, y: 1115, w: 120, h: 325 },
+    { x: 530, y: 390, w: 125, h: 1040 }, { x: 2140, y: 390, w: 125, h: 1040 },
+    ...(game.mapVariant === 'full' ? [{ x: 490, y: 1850, w: 2250, h: 110 }, { x: 2770, y: 150, w: 150, h: 1620 }, { x: 1300, y: 1760, w: 200, h: 260 }, { x: 2420, y: 1760, w: 180, h: 260 }] : [])
+  ];
+  return <div className="overlay tactical-overlay" onClick={onClose}><section className="modal tactical-modal" onClick={event => event.stopPropagation()} aria-label="Bản đồ chiến thuật"><button className="close" onClick={onClose} aria-label="Đóng bản đồ">×</button><div className="eyebrow">SƠ ĐỒ TÀU · {rooms.length} PHÒNG</div><h2>Bản đồ chiến thuật</h2><p>Chấm xanh: nhiệm vụ cần làm · Chấm đỏ: trạm sửa sự cố · Chấm trắng: bạn</p><svg className="tactical-svg" viewBox={`0 0 ${bounds.width} ${bounds.height}`} role="img" aria-label="Sơ đồ phòng, nhiệm vụ và vị trí của bạn">
+    <rect width={bounds.width} height={bounds.height} fill="#0b1a27" />
+    {corridors.map((path, index) => <rect key={index} x={path.x} y={path.y} width={path.w} height={path.h} rx="22" fill="#315e69" stroke="#75c9c4" strokeOpacity=".45" strokeWidth="7" />)}
+    {rooms.map(room => <g key={room.name}><title>{room.name}</title><rect x={room.x} y={room.y} width={room.w} height={room.h} rx="24" fill={room.kind === 'meeting' ? '#24585b' : room.outer ? '#244758' : '#1b3b4b'} stroke="#87bdc0" strokeWidth="9" /><text x={room.x + room.w / 2} y={room.y + room.h / 2} textAnchor="middle" fill="#dcf5ec" fontSize="42" fontWeight="700">{room.name}</text></g>)}
+    {objectives.map(station => <g key={station.id}><circle cx={station.x} cy={station.y} r="47" fill="#50e8bc" fillOpacity=".23" stroke="#90ffe0" strokeWidth="11" /><circle cx={station.x} cy={station.y} r="15" fill="#a3ffdf" /></g>)}
+    {game.sabotage === 'reactor' && REACTOR_FIXES.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="42" fill={game.reactorFixed.includes(index) ? '#45dfad' : '#ff6f77'} stroke="#fff" strokeWidth="8" />)}
+    {game.sabotage === 'lights' && <circle cx={STATIONS[0].x} cy={STATIONS[0].y} r="42" fill="#ff6f77" stroke="#fff" strokeWidth="8" />}
+    {me && <g><circle cx={me.x} cy={me.y} r="63" fill="#fff" fillOpacity=".18" /><circle cx={me.x} cy={me.y} r="26" fill="#fff" stroke="#092b35" strokeWidth="8" /></g>}
+  </svg><div className="tactical-note">Nhấn <kbd>M</kbd> hoặc <kbd>Esc</kbd> để trở lại ván.</div></section></div>;
+}
+
 function App() {
   const [name, setName] = useState(localStorage.getItem('starship-name') || '');
   const [codeInput, setCodeInput] = useState(new URLSearchParams(location.search).get('room') || '');
@@ -86,17 +108,23 @@ function App() {
   const [task, setTask] = useState<string | null>(null);
   const [taskReady, setTaskReady] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [creatingRoom, setCreatingRoom] = useState(false);
   const [musicOn, setMusicOn] = useState(musicEnabled);
+  const [mapOpen, setMapOpen] = useState(false);
   const [, setClock] = useState(0);
   const socket = useRef<WebSocket | null>(null);
   const serverOffset = useRef(0);
   const desired = useRef<{ code: string; name: string } | null>(null);
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const creating = useRef(false);
   const keys = useRef(new Set<string>());
   const snapshotRef = useRef<Snapshot | null>(null);
   const taskRef = useRef<string | null>(null);
+  const taskSession = useRef('');
+  const mapOpenRef = useRef(false);
   snapshotRef.current = snapshot;
   taskRef.current = task;
+  mapOpenRef.current = mapOpen;
 
   useEffect(() => {
     const timer = setInterval(() => setClock(value => value + 1), 1000);
@@ -107,6 +135,7 @@ function App() {
     return () => { window.removeEventListener('pointerdown', unlockMusic); setMusicActive(false); };
   }, []);
   useEffect(() => setMusicActive(snapshot?.phase === 'playing' || snapshot?.phase === 'meeting'), [snapshot?.phase, musicOn]);
+  useEffect(() => { if (snapshot?.phase !== 'playing') setMapOpen(false); }, [snapshot?.phase]);
 
   const connect = (room: string, playerName: string) => {
     if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
@@ -118,10 +147,12 @@ function App() {
     setCode(normalized); setCodeInput(normalized); setError(''); setStatus('Đang kết nối…');
     history.replaceState(null, '', `?room=${normalized}`);
     const saved = sessionStorage.getItem(`starship-token-${normalized}`) || '';
+    if (socket.current && socket.current.readyState < WebSocket.CLOSING) socket.current.close();
     const ws = new WebSocket(`${wsBase}/ws/${normalized}?name=${encodeURIComponent(playerName.trim())}&token=${encodeURIComponent(saved)}`);
     socket.current = ws;
-    ws.onopen = () => setStatus('Đã kết nối');
+    ws.onopen = () => { if (socket.current === ws) setStatus('Đã kết nối'); };
     ws.onmessage = event => {
+      if (socket.current !== ws) return;
       let message: ServerMessage;
       try { message = JSON.parse(event.data); } catch { return; }
       if (message.type === 'welcome') sessionStorage.setItem(`starship-token-${normalized}`, message.token);
@@ -130,10 +161,10 @@ function App() {
         serverOffset.current = message.serverTime - Date.now();
         setSnapshot(message); setError('');
       }
-      else if (message.type === 'taskReady' && taskRef.current === message.id) setTaskReady(message.id);
-      else if (message.type === 'error') { setError(message.message); if (taskRef.current) setTask(null); }
+      else if (message.type === 'taskReady' && taskRef.current === message.id && taskSession.current === (message.session || '')) setTaskReady(message.id);
+      else if (message.type === 'error') { setError(message.message); if (taskRef.current) { setTask(null); taskSession.current = ''; } }
     };
-    ws.onerror = () => setStatus('Mất kết nối');
+    ws.onerror = () => { if (socket.current === ws) setStatus('Mất kết nối'); };
     ws.onclose = event => {
       if (socket.current !== ws || !desired.current) return;
       setStatus('Mất kết nối, đang thử lại…');
@@ -159,7 +190,7 @@ function App() {
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);
     const timer = setInterval(() => {
       const g = snapshotRef.current;
-      if (g?.phase !== 'playing' || taskRef.current) return;
+      if (g?.phase !== 'playing' || taskRef.current || mapOpenRef.current) return;
       const k = keys.current;
       const dx = Number(k.has('d') || k.has('arrowright')) - Number(k.has('a') || k.has('arrowleft'));
       const dy = Number(k.has('s') || k.has('arrowdown')) - Number(k.has('w') || k.has('arrowup'));
@@ -168,21 +199,21 @@ function App() {
     return () => { clearInterval(timer); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
   }, []);
 
+  useEffect(() => { if (task || mapOpen) keys.current.clear(); }, [task, mapOpen]);
   useEffect(() => {
-    if (task) keys.current.clear();
-  }, [task]);
-  useEffect(() => {
-    if (task && snapshot?.completedTasks.includes(task)) setTask(null);
+    if (task && snapshot?.completedTasks.includes(task)) { setTask(null); taskSession.current = ''; }
   }, [snapshot?.completedTasks, task]);
   useEffect(() => {
     if (!task || snapshot?.role !== 'crew' || taskReady === task) return;
-    const retryTask = setInterval(() => send(socket.current, { type: 'taskStart', id: task }), 700);
+    const retryTask = setInterval(() => send(socket.current, { type: 'taskStart', id: task, session: taskSession.current }), 700);
     return () => clearInterval(retryTask);
   }, [task, taskReady, snapshot?.role]);
 
   const createRoom = async () => {
+    if (creating.current) return;
     if (!apiBase) { setError('Thiếu VITE_REALTIME_URL trong cấu hình Vercel.'); return; }
     if (!name.trim()) { setError('Hãy nhập tên trước.'); return; }
+    creating.current = true; setCreatingRoom(true);
     setError(''); setStatus('Đang tạo phòng…');
     try {
       const response = await fetch(`${apiBase}/rooms`, { method: 'POST' });
@@ -192,6 +223,8 @@ function App() {
     } catch (e) {
       setError(e instanceof TypeError ? 'Không kết nối được Worker. Kiểm tra VITE_REALTIME_URL và WEB_ORIGIN.' : e instanceof Error ? e.message : 'Không kết nối được máy chủ.');
       setStatus('');
+    } finally {
+      creating.current = false; setCreatingRoom(false);
     }
   };
 
@@ -208,10 +241,17 @@ function App() {
   const openTask = (id: string) => {
     if (!snapshot || snapshot.completedTasks.includes(id)) return;
     keys.current.clear();
+    taskSession.current = crypto.randomUUID();
     taskRef.current = id;
     setTaskReady(null);
     setTask(id);
-    if (snapshot.role === 'crew') send(socket.current, { type: 'taskStart', id });
+    if (snapshot.role === 'crew') send(socket.current, { type: 'taskStart', id, session: taskSession.current });
+  };
+  const closeTask = () => {
+    if (taskRef.current && snapshot?.role === 'crew') send(socket.current, { type: 'taskCancel', id: taskRef.current, session: taskSession.current });
+    taskSession.current = '';
+    setTask(null);
+    setTaskReady(null);
   };
   const interact = () => {
     if (!snapshot || snapshot.phase !== 'playing') return;
@@ -225,15 +265,18 @@ function App() {
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement)?.tagName)) return;
-      if (event.key === 'Escape' && task) { setTask(null); return; }
+      if (event.key === 'Escape' && task) { closeTask(); return; }
+      if (event.key === 'Escape' && mapOpen) { setMapOpen(false); return; }
       if (task || snapshot?.phase !== 'playing' || event.repeat) return;
+      if (event.key.toLowerCase() === 'm') { setMapOpen(value => !value); return; }
+      if (mapOpen) return;
       if (event.key.toLowerCase() === 'e') interact();
       if (event.key.toLowerCase() === 'q' && nearTarget) send(socket.current, { type: 'kill', target: nearTarget.id });
       if (event.key.toLowerCase() === 'v' && nearVent >= 0) send(socket.current, { type: 'vent', index: nearVent });
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [snapshot, task]);
+  }, [snapshot, task, mapOpen]);
 
   if (!snapshot) return <main className="landing">
     <div className="stars" />
@@ -242,7 +285,7 @@ function App() {
       <h1>STARSHIP<br /><span>SUSPECTS</span></h1>
       <p>Lập đội, hoàn thành nhiệm vụ và tìm ra kẻ giả mạo trước khi con tàu bị chiếm.</p>
       <label>TÊN CỦA BẠN<input value={name} maxLength={16} placeholder="Nhập tên phi hành gia" onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createRoom()} /></label>
-      <button className="primary large" onClick={createRoom}>Tạo phòng mới <span>→</span></button>
+      <button className="primary large" disabled={creatingRoom} onClick={createRoom}>{creatingRoom ? 'Đang tạo phòng…' : 'Tạo phòng mới'} <span>→</span></button>
       <div className="divider">HOẶC THAM GIA</div>
       <div className="join"><input value={codeInput} maxLength={6} placeholder="MÃ PHÒNG" onChange={e => setCodeInput(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && connect(codeInput, name)} /><button onClick={() => connect(codeInput, name)}>Vào phòng</button></div>
       {status && <div className="status">{status}</div>}{error && <div className="error">{error}</div>}
@@ -267,7 +310,7 @@ function App() {
       <section className="map-panel">
         <div className="map-header"><div><span className="eyebrow">{snapshot.phase === 'ended' ? 'KẾT THÚC' : snapshot.phase === 'meeting' ? 'HỌP KHẨN CẤP' : 'ĐANG CHƠI'} · {currentRoom} · {snapshot.mapVariant === 'full' ? '22 PHÒNG' : '16 PHÒNG'}</span><h2>{snapshot.role === 'impostor' ? 'Kẻ phá hoại' : 'Phi hành đoàn'}</h2></div><div className="progress"><span>NHIỆM VỤ {Math.round(snapshot.taskProgress * 100)}%</span><div><i style={{ width: `${snapshot.taskProgress * 100}%` }} /></div></div></div>
         <div className="canvas-wrap"><GameScene game={snapshot} onInteract={interact} pressed={keys} /></div>
-        <div className="map-footer"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> DI CHUYỂN</span><span><kbd>E</kbd> TƯƠNG TÁC</span><span>{snapshot.role === 'impostor' ? <><kbd>Q</kbd> HẠ GỤC · <kbd>V</kbd> THÔNG HƠI</> : 'KHÁM PHÁ CÁC PHÒNG ĐỂ LÀM NHIỆM VỤ'}</span></div>
+        <div className="map-footer"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> DI CHUYỂN</span><span><kbd>E</kbd> TƯƠNG TÁC</span><button className="map-toggle" onClick={() => setMapOpen(true)}><kbd>M</kbd> BẢN ĐỒ</button><span>{snapshot.role === 'impostor' ? <><kbd>Q</kbd> HẠ GỤC · <kbd>V</kbd> THÔNG HƠI</> : 'KHÁM PHÁ CÁC PHÒNG ĐỂ LÀM NHIỆM VỤ'}</span></div>
       </section>
       <aside className="sidebar"><div className={`role-card ${snapshot.role === 'impostor' ? 'impostor' : ''}`}><div className="eyebrow">VAI TRÒ BÍ MẬT</div><h3>{snapshot.role === 'impostor' ? 'KẺ PHÁ HOẠI' : 'PHI HÀNH ĐOÀN'}</h3><p>{snapshot.role === 'impostor' ? 'Hạ gục, phá hoại và đánh lạc hướng đoàn.' : 'Làm nhiệm vụ và tìm ra kẻ phá hoại.'}</p>{!me?.alive && <div className="dead-badge">BẠN ĐÃ CHẾT · {snapshot.role === 'crew' ? 'TIẾP TỤC LÀM NHIỆM VỤ' : 'THEO DÕI TRẬN'}</div>}</div>
         {snapshot.sabotage && <div className="alert sabotage-alert"><strong>{snapshot.sabotage === 'reactor' ? `⚠ LÒ PHẢN ỨNG · ${seconds(snapshot.reactorDeadline)}s` : snapshot.sabotage === 'lights' ? '⚠ MẤT ĐIỆN' : `⚠ KHÓA CỬA · ${seconds(snapshot.doorsUntil)}s`}</strong><span>{snapshot.sabotage === 'reactor' ? `Cần hai người khác nhau kích hoạt hai trạm: ${reactorRooms.map((room, index) => `${room} ${snapshot.reactorFixed.includes(index) ? '✓' : '○'}`).join(' · ')}${snapshot.reactorWindowEndsAt ? ` · Trạm còn lại cần hoàn tất trong ${seconds(snapshot.reactorWindowEndsAt)}s` : ''}` : snapshot.sabotage === 'lights' ? 'Tìm bảng điện trong PHÒNG ĐIỆN để khôi phục tầm nhìn.' : 'Các lối vào phòng bị khóa tạm thời.'}</span></div>}
@@ -285,7 +328,8 @@ function App() {
         <div className="panel"><h3>{snapshot.role === 'crew' ? `NHIỆM VỤ · ${snapshot.completedTasks.length}/${snapshot.tasks.length}` : 'NGƯỜI CHƠI'}</h3>{snapshot.role === 'crew' ? STATIONS.filter(s => snapshot.tasks.includes(s.id)).map(s => <div className={`task-row ${snapshot.completedTasks.includes(s.id) ? 'is-done' : ''}`} key={s.id}><span>{snapshot.completedTasks.includes(s.id) ? '✓' : '○'}</span><div>{s.name}<small>{s.room}</small></div></div>) : snapshot.players.map(p => <div className="task-row" key={p.id}><span style={{ color: p.color }}>●</span>{p.name}{snapshot.allies.includes(p.id) && ' ◆'}</div>)}</div>
       </aside>
     </main>}
-    {task && snapshot.phase === 'playing' && <TaskModal key={task} id={task} fake={snapshot.role === 'impostor'} ready={snapshot.role === 'impostor' || taskReady === task} onClose={() => setTask(null)} onStep={step => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskStep', id: task, step }); }} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task }); else setTask(null); }} />}
+    {mapOpen && snapshot.phase === 'playing' && <TacticalMap game={snapshot} onClose={() => setMapOpen(false)} />}
+    {task && snapshot.phase === 'playing' && <TaskModal key={`${task}-${taskSession.current}`} id={task} fake={snapshot.role === 'impostor'} ready={snapshot.role === 'impostor' || taskReady === task} onClose={closeTask} onStep={step => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskStep', id: task, step, session: taskSession.current }); }} onComplete={() => { if (snapshot.role === 'crew') send(socket.current, { type: 'taskComplete', id: task, session: taskSession.current }); else closeTask(); }} />}
       {meeting && snapshot.phase === 'meeting' && <div className="overlay"><section className="modal meeting-modal"><div className="eyebrow">{meeting.reason.toUpperCase()} · {meeting.stage === 'discussion' ? 'THẢO LUẬN' : meeting.stage === 'voting' ? 'BỎ PHIẾU' : 'KẾT QUẢ'}</div><h2>{meeting.stage === 'result' ? meeting.ejected ? `${snapshot.players.find(p => p.id === meeting.ejected)?.name || 'Một người'} đã bị loại` : 'Không ai bị loại' : 'Ai là kẻ phá hoại?'}</h2><div className="meeting-tools"><div className="timer">{seconds(meeting.endsAt)}s</div>{meeting.stage === 'discussion' && <div className="end-meeting"><span>Kết thúc họp sớm: {meeting.endVotes?.length || 0}/{Math.floor(snapshot.players.filter(p => p.alive && p.connected).length / 2) + 1} phiếu</span><button disabled={!me?.alive || meeting.endVotes?.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'endMeeting' })}>{meeting.endVotes?.includes(snapshot.me) ? 'Đã đồng ý' : 'Đồng ý kết thúc'}</button></div>}</div><div className="meeting-grid"><div className="vote-list">{snapshot.players.map(p => <button key={p.id} disabled={!p.alive || meeting.stage !== 'voting' || !me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: p.id })}><span className="player-dot" style={{ background: p.color }} />{p.name}{!p.alive && ' · đã chết'}{meeting.votesCast.includes(p.id) && <small>ĐÃ BỎ PHIẾU</small>}</button>)}{meeting.stage === 'voting' && <button disabled={!me?.alive || meeting.votesCast.includes(snapshot.me)} onClick={() => send(socket.current, { type: 'vote', target: null })}>Bỏ qua phiếu</button>}</div><div className="chat"><div className="messages">{snapshot.chat.map(m => <div key={m.id}><strong>{m.name}: </strong>{m.text}</div>)}</div><form onSubmit={e => { e.preventDefault(); send(socket.current, { type: 'chat', text: chatText }); setChatText(''); }}><input value={chatText} maxLength={180} placeholder={me?.alive ? 'Nhắn trong cuộc họp…' : 'Chỉ ma khác thấy tin nhắn…'} onChange={e => setChatText(e.target.value)} /><button disabled={!chatText.trim()}>Gửi</button></form></div></div></section></div>}
     {snapshot.phase === 'ended' && <div className="overlay"><section className="modal end-modal"><div className="eyebrow">VÁN ĐẤU KẾT THÚC</div><h2 className={snapshot.winner === 'impostor' ? 'red' : 'cyan'}>{snapshot.winner === 'impostor' ? 'KẺ PHÁ HOẠI THẮNG' : 'PHI HÀNH ĐOÀN THẮNG'}</h2><p>{snapshot.winnerReason}</p><div className="winner-list">{snapshot.players.map(p => <span key={p.id} style={{ color: p.color }}>{p.name}{snapshot.allies.includes(p.id) ? ' ◆' : ''}</span>)}</div>{snapshot.host === snapshot.me ? <button className="primary large" onClick={() => send(socket.current, { type: 'restart' })}>Chơi ván mới →</button> : <p>Đang chờ host mở ván mới…</p>}</section></div>}
     {error && <div className="toast" onClick={() => setError('')}>{error} ×</div>}

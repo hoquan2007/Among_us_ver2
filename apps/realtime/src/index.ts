@@ -11,7 +11,7 @@ interface Player {
   id: string; token: string; name: string; color: string; x: number; y: number;
   alive: boolean; connected: boolean; disconnectedAt: number; role: Role | null;
   tasks: string[]; completedTasks: string[]; taskStarted: Record<string, number>;
-  taskSteps: Record<string, number[]>;
+  taskSteps: Record<string, number[]>; taskSession?: Record<string, string>;
   killReadyAt: number; sabotageReadyAt: number; emergencyUsed: number;
   lastMoveAt: number; votes: string | null | undefined;
 }
@@ -106,7 +106,7 @@ export class GameRoom extends DurableObject<Env> {
       const id = crypto.randomUUID();
       const color = COLORS.find(c => !game.players.some(p => p.color === c)) || COLORS[game.players.length % COLORS.length];
       player = { id, token: crypto.randomUUID(), name, color, x: EMERGENCY.x, y: EMERGENCY.y,
-        alive: true, connected: true, disconnectedAt: 0, role: null, tasks: [], completedTasks: [], taskStarted: {}, taskSteps: {},
+        alive: true, connected: true, disconnectedAt: 0, role: null, tasks: [], completedTasks: [], taskStarted: {}, taskSteps: {}, taskSession: {},
         killReadyAt: 0, sabotageReadyAt: 0, emergencyUsed: 0, lastMoveAt: Date.now(), votes: undefined };
       game.players.push(player);
       if (!game.host) game.host = id;
@@ -140,7 +140,7 @@ export class GameRoom extends DurableObject<Env> {
     const now = Date.now();
     const error = await this.handle(player, message, now);
     if (error) this.send(ws, { type: 'error', message: error });
-    else if (message.type === 'taskStart') this.send(ws, { type: 'taskReady', id: message.id });
+    else if (message.type === 'taskStart') this.send(ws, { type: 'taskReady', id: message.id, session: message.session });
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
@@ -186,6 +186,10 @@ export class GameRoom extends DurableObject<Env> {
 
   private async handle(p: Player, m: ClientMessage, now: number): Promise<string | void> {
     const g = this.game!;
+    if (g.phase === 'playing' && g.sabotage === 'reactor' && now >= g.reactorDeadline) {
+      this.end('impostor', 'Lò phản ứng phát nổ');
+      await this.persist(); this.broadcast(true); return 'Lò phản ứng đã phát nổ.';
+    }
     if (m.type === 'start') {
       if (g.phase !== 'lobby' || p.id !== g.host || g.players.filter(x => x.connected).length < 4) return 'Cần host và ít nhất 4 người đang kết nối.';
       g.players = g.players.filter(x => x.connected);
@@ -218,11 +222,16 @@ export class GameRoom extends DurableObject<Env> {
       if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return 'Nhiệm vụ không khả dụng.';
       const station = STATIONS.find(s => s.id === m.id);
       if (!station || distance(p, station) > INTERACT_RANGE) return 'Hãy đứng gần trạm nhiệm vụ.';
-      p.taskStarted[m.id] = now;
+      const session = typeof m.session === 'string' && m.session.length <= 64 ? m.session : '';
+      p.taskSession ??= {};
       p.taskSteps ??= {};
-      p.taskSteps[m.id] = [];
+      if (p.taskSession[m.id] !== session || !p.taskStarted[m.id]) {
+        p.taskSession[m.id] = session;
+        p.taskStarted[m.id] = now;
+        p.taskSteps[m.id] = [];
+      }
     } else if (m.type === 'taskStep') {
-      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id) || !p.taskStarted[m.id]) return;
+      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id) || !p.taskStarted[m.id] || (p.taskSession?.[m.id] || '') !== (m.session || '')) return;
       const station = STATIONS.find(s => s.id === m.id);
       if (!station || distance(p, station) > INTERACT_RANGE || !Number.isInteger(m.step)) return;
       p.taskSteps ??= {};
@@ -235,7 +244,7 @@ export class GameRoom extends DurableObject<Env> {
       }
       steps.push(m.step);
     } else if (m.type === 'taskComplete') {
-      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id)) return;
+      if (g.phase !== 'playing' || p.role !== 'crew' || !p.tasks.includes(m.id) || p.completedTasks.includes(m.id) || (p.taskSession?.[m.id] || '') !== (m.session || '')) return;
       const station = STATIONS.find(s => s.id === m.id);
       const minimum = m.id === 'scan' || m.id === 'upload' || m.id === 'archive' ? 3000 : 1800;
       const expected = m.id === 'wires' ? 3 : TASK_SEQUENCE[m.id]?.length || 0;
@@ -244,7 +253,13 @@ export class GameRoom extends DurableObject<Env> {
       p.completedTasks.push(m.id);
       delete p.taskStarted[m.id];
       delete p.taskSteps[m.id];
+      delete p.taskSession?.[m.id];
       this.checkWin();
+    } else if (m.type === 'taskCancel') {
+      if ((p.taskSession?.[m.id] || '') !== (m.session || '')) return;
+      delete p.taskStarted[m.id]; delete p.taskSteps?.[m.id]; delete p.taskSession?.[m.id];
+      await this.persist();
+      return;
     } else if (m.type === 'kill') {
       if (g.phase !== 'playing' || p.role !== 'impostor' || !p.alive || now < p.killReadyAt) return;
       const target = g.players.find(x => x.id === m.target && x.alive && x.role === 'crew');
@@ -284,8 +299,8 @@ export class GameRoom extends DurableObject<Env> {
       if (g.phase !== 'meeting' || typeof m.text !== 'string') return;
       const text = m.text.trim().slice(0, 180);
       if (!text) return;
-      if (g.chat.filter(x => x.at > now - 10_000 && x.name === p.name).length >= 5) return;
-      g.chat.push({ id: crypto.randomUUID(), name: p.name, text, at: now, ghost: !p.alive });
+      if (g.chat.filter(x => x.at > now - 10_000 && x.senderId === p.id).length >= 5) return;
+      g.chat.push({ id: crypto.randomUUID(), senderId: p.id, name: p.name, text, at: now, ghost: !p.alive });
       g.chat = g.chat.slice(-60);
     } else if (m.type === 'sabotage') {
       if (g.phase !== 'playing' || p.role !== 'impostor' || !p.alive || g.sabotage || now < p.sabotageReadyAt) return;
@@ -346,7 +361,7 @@ export class GameRoom extends DurableObject<Env> {
         ? [...Array.from({ length: taskCount - 2 }, (_, offset) => core[(i + offset) % core.length]), outer[(i * 2) % outer.length], outer[(i * 2 + 1) % outer.length]]
         : core.slice(0, taskCount);
       p.tasks = p.role === 'crew' ? chosen.map(s => s.id) : [];
-      p.completedTasks = []; p.taskStarted = {}; p.taskSteps = {}; p.killReadyAt = now + 20_000;
+      p.completedTasks = []; p.taskStarted = {}; p.taskSteps = {}; p.taskSession = {}; p.killReadyAt = now + 20_000;
       p.sabotageReadyAt = now + 15_000; p.emergencyUsed = 0; p.lastMoveAt = now;
     });
   }

@@ -2,7 +2,7 @@ export const MAP = { width: 3600, height: 2400 } as const;
 export const CORE_MAP = { width: 2800, height: 1800 } as const;
 export type MapVariant = 'core' | 'full';
 export const mapBounds = (variant: MapVariant) => variant === 'full' ? MAP : CORE_MAP;
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const VIEW = { width: 1080, height: 660 } as const;
 export const SPEED = 205;
 export const INTERACT_RANGE = 90;
@@ -99,7 +99,7 @@ export type MeetingStage = 'discussion' | 'voting' | 'result';
 export interface PublicPlayer { id: string; name: string; color: string; x: number; y: number; alive: boolean; connected: boolean; }
 export interface Body { id: string; playerId: string; x: number; y: number; color: string; }
 export interface KillEffect { id: string; x: number; y: number; actor: string; target: string; at: number; }
-export interface ChatMessage { id: string; name: string; text: string; at: number; ghost: boolean; }
+export interface ChatMessage { id: string; senderId?: string; name: string; text: string; at: number; ghost: boolean; }
 export interface Snapshot {
   type: 'snapshot'; protocolVersion: number; code: string; phase: Phase; preset: Preset; mapVariant: MapVariant; me: string; host: string; players: PublicPlayer[];
   role: Role | null; allies: string[]; tasks: string[]; completedTasks: string[]; taskProgress: number;
@@ -109,13 +109,14 @@ export interface Snapshot {
   chat: ChatMessage[]; winner: Role | null; winnerReason: string; serverTime: number;
 }
 export type ClientMessage =
-  | { type: 'move'; dx: number; dy: number } | { type: 'start' } | { type: 'preset'; value: Preset } | { type: 'taskStart'; id: string }
-  | { type: 'taskStep'; id: string; step: number }
-  | { type: 'taskComplete'; id: string } | { type: 'kill'; target: string } | { type: 'report'; body: string }
+  | { type: 'move'; dx: number; dy: number } | { type: 'start' } | { type: 'preset'; value: Preset } | { type: 'taskStart'; id: string; session?: string }
+  | { type: 'taskStep'; id: string; step: number; session?: string }
+  | { type: 'taskComplete'; id: string; session?: string } | { type: 'taskCancel'; id: string; session?: string }
+  | { type: 'kill'; target: string } | { type: 'report'; body: string }
   | { type: 'emergency' } | { type: 'vote'; target: string | null } | { type: 'endMeeting' } | { type: 'chat'; text: string }
   | { type: 'sabotage'; kind: Exclude<Sabotage, null> } | { type: 'fix'; point?: number }
   | { type: 'vent'; index: number } | { type: 'restart' };
-export type ServerMessage = Snapshot | { type: 'welcome'; token: string; id: string } | { type: 'taskReady'; id: string } | { type: 'error'; message: string };
+export type ServerMessage = Snapshot | { type: 'welcome'; token: string; id: string } | { type: 'taskReady'; id: string; session?: string } | { type: 'error'; message: string };
 export function distance(a: { x: number; y: number }, b: { x: number; y: number }): number { return Math.hypot(a.x - b.x, a.y - b.y); }
 export function hitsRect(x: number, y: number, rect: Rect, radius = 17): boolean {
   return x + radius > rect.x && x - radius < rect.x + rect.w && y + radius > rect.y && y - radius < rect.y + rect.h;

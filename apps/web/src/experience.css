@@ -53,6 +53,8 @@ button:hover:not(:disabled){transform:translateY(-2px)}
 .canvas-wrap canvas{aspect-ratio:1080/660;object-fit:contain}
 .map-footer{align-items:center;justify-content:space-between;gap:12px;font-size:11px;font-weight:700;letter-spacing:.04em}
 .map-footer span{display:flex;align-items:center;gap:4px}
+.map-toggle{display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid #75baae66;border-radius:8px;background:#163c48;color:#d2f9ed;font-size:11px;font-weight:800;letter-spacing:.06em;white-space:nowrap}.map-toggle:hover{background:#245665}
+.tactical-modal{width:min(1100px,96vw);padding:30px 35px 25px}.tactical-modal h2{font-size:47px;margin-bottom:5px}.tactical-modal p{font-size:13px;margin-bottom:16px}.tactical-svg{display:block;width:100%;max-height:68vh;aspect-ratio:3/2;border:1px solid #78c1bd91;border-radius:14px;background:#0b1a27;box-shadow:inset 0 0 55px #0008}.tactical-note{text-align:right;margin-top:13px;color:#99c7c7;font-size:12px}
 kbd{background:#173544;color:#c9f7ed;border-color:#6eb9b3}
 .sidebar{gap:12px}
 .role-card{border-color:#5abca97e;background:linear-gradient(140deg,#1b514e,#102c3a)}
